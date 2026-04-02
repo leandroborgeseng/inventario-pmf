@@ -425,10 +425,38 @@ app.get('/api/computadores/:token', async (req, res) => {
       ...(await buildSecretariaResumoMonitores(s.id, monitoresTotal)),
     };
 
+    const locPc = await dbAll(
+      `SELECT DISTINCT TRIM(localizacao) AS l
+       FROM computadores
+       WHERE secretaria_id = ?
+         AND localizacao IS NOT NULL
+         AND TRIM(localizacao) != ''`,
+      [s.id]
+    );
+    const locMon = await dbAll(
+      `SELECT DISTINCT TRIM(localizacao) AS l
+       FROM monitores
+       WHERE secretaria_id = ?
+         AND localizacao IS NOT NULL
+         AND TRIM(localizacao) != ''`,
+      [s.id]
+    );
+    const locSet = new Set();
+    locPc.forEach((r) => {
+      if (r.l) locSet.add(r.l);
+    });
+    locMon.forEach((r) => {
+      if (r.l) locSet.add(r.l);
+    });
+    const locais_filtro = [...locSet].sort((a, b) =>
+      a.localeCompare(b, 'pt', { sensitivity: 'base' })
+    );
+
     res.json({
       ok: true,
       secretaria: { nome: s.nome },
       resumo,
+      locais_filtro,
       computadores: list,
     });
   } catch (e) {
@@ -444,7 +472,7 @@ app.get('/api/monitores/:token', async (req, res) => {
     if (!s) return res.status(401).json({ error: 'Não autorizado' });
 
     const monitores = await dbAll(
-      `SELECT m.id, m.patrimonio, m.modelo
+      `SELECT m.id, m.patrimonio, m.modelo, m.localizacao
        FROM monitores m
        WHERE m.secretaria_id = ?
        ORDER BY m.patrimonio COLLATE NOCASE`,
@@ -459,9 +487,11 @@ app.get('/api/monitores/:token', async (req, res) => {
           id: m.id,
           patrimonio: m.patrimonio,
           modelo: m.modelo,
+          localizacao: m.localizacao || null,
           label:
             (m.patrimonio || '') +
-            (m.modelo ? ' — ' + m.modelo : ''),
+            (m.modelo ? ' — ' + m.modelo : '') +
+            (m.localizacao ? ' · ' + m.localizacao : ''),
         })),
       });
     }
@@ -495,6 +525,7 @@ app.get('/api/monitores/:token', async (req, res) => {
       id: m.id,
       patrimonio: m.patrimonio,
       modelo: m.modelo,
+      localizacao: m.localizacao || null,
       confirmado: checks[m.id] === true,
     }));
 
@@ -527,10 +558,10 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
     const localFilter = hasLocal ? String(localRaw) : '';
 
     const monitores = await dbAll(
-      `SELECT m.id, m.patrimonio, m.modelo
+      `SELECT m.id, m.patrimonio, m.modelo, m.localizacao
        FROM monitores m
        WHERE m.secretaria_id = ?
-       ORDER BY m.patrimonio COLLATE NOCASE, m.id`,
+       ORDER BY m.localizacao COLLATE NOCASE, m.patrimonio COLLATE NOCASE, m.id`,
       [s.id]
     );
 
@@ -567,17 +598,22 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
       id: m.id,
       patrimonio: m.patrimonio,
       modelo: m.modelo,
+      localizacao: m.localizacao || null,
       vinculo: byMon.get(m.id) || null,
     }));
 
     if (localFilter) {
       const semLocalToken = '__sem_local__';
       list = list.filter((item) => {
+        const mloc = String(item.localizacao || '').trim();
         const v = item.vinculo;
-        if (!v) return false;
-        const loc = String(v.localizacao || '').trim();
-        if (localFilter === semLocalToken) return !loc;
-        return loc === localFilter;
+        const ploc = v ? String(v.localizacao || '').trim() : '';
+        if (localFilter === semLocalToken) {
+          return !mloc && !ploc;
+        }
+        if (mloc === localFilter) return true;
+        if (ploc === localFilter) return true;
+        return false;
       });
     }
 
@@ -638,7 +674,7 @@ app.get('/api/relatorio-vistoria/:token', async (req, res) => {
     if (audIds.length) {
       const ph = audIds.map(() => '?').join(',');
       const ms = await dbAll(
-        `SELECT am.auditoria_id AS aid, m.id AS mid, m.patrimonio, m.modelo
+        `SELECT am.auditoria_id AS aid, m.id AS mid, m.patrimonio, m.modelo, m.localizacao
          FROM auditoria_monitores am
          JOIN monitores m ON m.id = am.monitor_id
          WHERE am.auditoria_id IN (${ph}) AND am.confirmado = 1
@@ -651,6 +687,7 @@ app.get('/api/relatorio-vistoria/:token', async (req, res) => {
           id: row.mid,
           patrimonio: row.patrimonio,
           modelo: row.modelo,
+          localizacao: row.localizacao || null,
         });
       }
     }
@@ -1076,7 +1113,7 @@ app.get('/api/admin/monitor/:id', async (req, res) => {
     if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     const r = await dbGet(
-      `SELECT m.id, m.patrimonio, m.modelo, m.secretaria_id, s.nome AS secretaria_nome
+      `SELECT m.id, m.patrimonio, m.modelo, m.localizacao, m.secretaria_id, s.nome AS secretaria_nome
        FROM monitores m
        JOIN secretarias s ON s.id = m.secretaria_id
        WHERE m.id = ?`,
@@ -1165,9 +1202,10 @@ app.get('/api/admin/monitores', async (req, res) => {
       params.push(secretariaId);
     }
     if (q) {
-      where += ' AND (m.patrimonio LIKE ? OR m.modelo LIKE ?)';
+      where +=
+        ' AND (m.patrimonio LIKE ? OR m.modelo LIKE ? OR m.localizacao LIKE ?)';
       const like = '%' + q.replace(/%/g, '\\%') + '%';
-      params.push(like, like);
+      params.push(like, like, like);
     }
 
     const totalRow = await dbGet(
@@ -1176,11 +1214,11 @@ app.get('/api/admin/monitores', async (req, res) => {
     );
     params.push(limit, offset);
     const rows = await dbAll(
-      `SELECT m.id, m.patrimonio, m.modelo, m.secretaria_id, s.nome AS secretaria_nome
+      `SELECT m.id, m.patrimonio, m.modelo, m.localizacao, m.secretaria_id, s.nome AS secretaria_nome
        FROM monitores m
        JOIN secretarias s ON s.id = m.secretaria_id
        WHERE ${where}
-       ORDER BY s.nome COLLATE NOCASE, m.patrimonio COLLATE NOCASE
+       ORDER BY s.nome COLLATE NOCASE, m.localizacao COLLATE NOCASE, m.patrimonio COLLATE NOCASE
        LIMIT ? OFFSET ?`,
       params
     );
@@ -1325,9 +1363,13 @@ app.post('/api/admin/monitor', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'secretaria_id obrigatório' });
     const ex = await dbGet('SELECT id FROM secretarias WHERE id = ?', [sid]);
     if (!ex) return res.status(400).json({ ok: false, error: 'Secretaria inválida' });
+    const locIns =
+      b.localizacao == null || b.localizacao === ''
+        ? null
+        : String(b.localizacao).trim();
     const r = await dbRun(
-      `INSERT INTO monitores (patrimonio, modelo, secretaria_id) VALUES (?, ?, ?)`,
-      [b.patrimonio || null, b.modelo || null, sid]
+      `INSERT INTO monitores (patrimonio, modelo, secretaria_id, localizacao) VALUES (?, ?, ?, ?)`,
+      [b.patrimonio || null, b.modelo || null, sid, locIns || null]
     );
     res.json({ ok: true, id: r.lastID });
   } catch (e) {
@@ -1354,10 +1396,15 @@ app.patch('/api/admin/monitor/:id', async (req, res) => {
       b.patrimonio !== undefined ? b.patrimonio : row.patrimonio;
     const mod =
       b.modelo !== undefined ? b.modelo : row.modelo;
+    let loc = row.localizacao;
+    if (Object.prototype.hasOwnProperty.call(b, 'localizacao')) {
+      const v = b.localizacao;
+      loc = v == null || v === '' ? null : String(v).trim();
+    }
 
     await dbRun(
-      `UPDATE monitores SET patrimonio = ?, modelo = ?, secretaria_id = ? WHERE id = ?`,
-      [pat, mod, sid, id]
+      `UPDATE monitores SET patrimonio = ?, modelo = ?, secretaria_id = ?, localizacao = ? WHERE id = ?`,
+      [pat, mod, sid, loc, id]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1474,7 +1521,7 @@ app.get('/api/export', async (req, res) => {
       const part = audIds.slice(i, i + chunkSize);
       const ph = part.map(() => '?').join(',');
       const ms = await dbAll(
-        `SELECT am.auditoria_id AS aid, m.patrimonio, m.modelo
+        `SELECT am.auditoria_id AS aid, m.patrimonio, m.modelo, m.localizacao
          FROM auditoria_monitores am
          JOIN monitores m ON m.id = am.monitor_id
          WHERE am.auditoria_id IN (${ph}) AND am.confirmado = 1
@@ -1482,7 +1529,8 @@ app.get('/api/export', async (req, res) => {
         part
       );
       for (const m of ms) {
-        const line = `${m.patrimonio}${m.modelo ? ` (${m.modelo})` : ''}`;
+        const loc = m.localizacao ? ` · ${m.localizacao}` : '';
+        const line = `${m.patrimonio}${m.modelo ? ` (${m.modelo})` : ''}${loc}`;
         const arr = monMap.get(m.aid) || [];
         arr.push(line);
         monMap.set(m.aid, arr);
@@ -1620,6 +1668,11 @@ function startServer() {
               'ALTER TABLE computadores ADD COLUMN data_aquisicao TEXT'
             );
             console.log('[db] Coluna computadores.data_aquisicao adicionada.');
+          }
+          const colsMon = await dbAll(`PRAGMA table_info(monitores)`);
+          if (!colsMon.some((c) => c.name === 'localizacao')) {
+            await dbRun('ALTER TABLE monitores ADD COLUMN localizacao TEXT');
+            console.log('[db] Coluna monitores.localizacao adicionada.');
           }
         } catch (e) {
           console.error('[db] Migração:', e.message);

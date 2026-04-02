@@ -153,7 +153,7 @@
             <label class="field">Filtrar secretaria</label>
             <select id="mon-filter-sec" class="field-sm"></select>
             <label class="field" style="margin-top: 0.65rem">Busca</label>
-            <input id="mon-q" type="text" class="field-sm" placeholder="Patrimônio ou modelo…" />
+            <input id="mon-q" type="text" class="field-sm" placeholder="Patrimônio, modelo ou local…" />
             <button type="button" class="btn btn-primary" id="mon-search" style="margin-top: 0.65rem">
               Atualizar lista
             </button>
@@ -169,6 +169,10 @@
               <div>
                 <label class="field" for="mon-f-mod">Modelo</label>
                 <input id="mon-f-mod" class="field-sm" type="text" />
+              </div>
+              <div style="grid-column: 1 / -1">
+                <label class="field" for="mon-f-loc">Local / setor (cadastro)</label>
+                <input id="mon-f-loc" class="field-sm" type="text" placeholder="Ex.: RH - SETOR DE HARDWARE" />
               </div>
               <div style="grid-column: 1 / -1">
                 <label class="field" for="mon-f-sec">Secretaria</label>
@@ -188,6 +192,7 @@
                   <th>ID</th>
                   <th>Pat.</th>
                   <th>Modelo</th>
+                  <th>Local</th>
                   <th>Secretaria</th>
                   <th></th>
                 </tr>
@@ -560,6 +565,8 @@
               '</td><td>' +
               escapeHtml(m.modelo || '') +
               '</td><td>' +
+              escapeHtml(m.localizacao || '') +
+              '</td><td>' +
               escapeHtml(m.secretaria_nome || '') +
               '</td><td><div class="btn-row-inline"><button type="button" class="btn btn-ghost btn-sm" data-mon-edit="' +
               m.id +
@@ -602,6 +609,7 @@
           $('mon-edit-id').value = String(m.id);
           $('mon-f-pat').value = m.patrimonio || '';
           $('mon-f-mod').value = m.modelo || '';
+          $('mon-f-loc').value = m.localizacao || '';
           $('mon-f-sec').value = String(m.secretaria_id);
         }
 
@@ -609,6 +617,7 @@
           $('mon-edit-id').value = '';
           $('mon-f-pat').value = '';
           $('mon-f-mod').value = '';
+          $('mon-f-loc').value = '';
           $('mon-f-sec').selectedIndex = 0;
         }
 
@@ -787,6 +796,7 @@
           const body = {
             patrimonio: $('mon-f-pat').value || null,
             modelo: $('mon-f-mod').value || null,
+            localizacao: $('mon-f-loc').value.trim() || null,
             secretaria_id: sid,
           };
           const eid = $('mon-edit-id').value;

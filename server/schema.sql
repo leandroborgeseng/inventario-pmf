@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS monitores (
   patrimonio TEXT,
   modelo TEXT,
   secretaria_id INTEGER NOT NULL,
+  localizacao TEXT,
   FOREIGN KEY (secretaria_id) REFERENCES secretarias(id)
 );
 

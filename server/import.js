@@ -4,7 +4,7 @@
  * Importa computadores.xlsx e monitores.xlsx (raiz do projeto) para SQLite.
  * Colunas esperadas (cabeçalhos flexíveis, ver NORMALIZE abaixo):
  * computadores: nome_maquina, patrimonio, secretaria, localizacao, status_ad, data_aquisicao
- * monitores: patrimonio, modelo, secretaria
+ * monitores: patrimonio, modelo, secretaria, localizacao (Setor/local conforme planilha)
  *
  * Secretarias existentes (mesmo nome) mantêm token e senha.
  * Novas secretarias recebem token estável (hash do nome + slug) e senha IMPORT_DEFAULT_SENHA.
@@ -275,6 +275,11 @@ async function ensureSchema(db) {
   await new Promise((resolve, reject) => {
     db.exec(schema, (err) => (err ? reject(err) : resolve()));
   });
+  const colsMon = await dbAll(db, 'PRAGMA table_info(monitores)');
+  if (!colsMon.some((c) => c.name === 'localizacao')) {
+    await dbRun(db, 'ALTER TABLE monitores ADD COLUMN localizacao TEXT');
+    console.log('[import] Coluna monitores.localizacao adicionada (migração).');
+  }
 }
 
 function loadCodigoMonitoresMap() {
@@ -535,13 +540,24 @@ async function main() {
     'bem_patrimonial',
     'bem patrimonial',
   ];
+  const aliasLocMon = [
+    'localizacao',
+    'localização',
+    'sala',
+    'setor_fisico',
+    'setor físico',
+    'local_bem',
+    'local do bem',
+  ];
   let nMon = 0;
   let nMonSkip = 0;
   for (const r of rowsMon) {
-    let secretariaNome = pickRow(r, ['secretaria', 'secretária']);
+    const secFromCol = pickRow(r, ['secretaria', 'secretária']);
+    let setorParaInfer = '';
+    let secretariaNome = secFromCol;
     if (!secretariaNome) {
-      const setor = pickRow(r, ['setor', 'local']);
-      secretariaNome = inferSecretariaFromSetorMonitor(setor, codigoMap);
+      setorParaInfer = pickRow(r, ['setor', 'local']);
+      secretariaNome = inferSecretariaFromSetorMonitor(setorParaInfer, codigoMap);
     }
     if (!secretariaNome) {
       nMonSkip++;
@@ -552,10 +568,17 @@ async function main() {
     const patrimonio = pickRow(r, aliasPat);
     const modelo = pickRow(r, aliasMod);
 
+    let localizacao = pickRow(r, aliasLocMon);
+    if (!localizacao && secFromCol) {
+      localizacao = pickRow(r, ['setor', 'local']) || null;
+    } else if (!localizacao && setorParaInfer) {
+      localizacao = setorParaInfer || null;
+    }
+
     await dbRun(
       db,
-      `INSERT INTO monitores (patrimonio, modelo, secretaria_id) VALUES (?, ?, ?)`,
-      [patrimonio || null, modelo || null, sec.id]
+      `INSERT INTO monitores (patrimonio, modelo, secretaria_id, localizacao) VALUES (?, ?, ?, ?)`,
+      [patrimonio || null, modelo || null, sec.id, localizacao || null]
     );
     nMon++;
   }

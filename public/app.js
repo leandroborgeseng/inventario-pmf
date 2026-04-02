@@ -177,9 +177,9 @@
           '«Não ligado»: ainda não foi escolhido na vistoria de nenhum computador. «Ligado»: associado ao gravar monitores após confirmar um PC.';
       } else {
         hint.textContent =
-          'Filtro de local «' +
+          'Filtro «' +
           locLabel +
-          '»: só entram monitores já ligados a um computador com esse local. Monitores sem vínculo não aparecem neste filtro.';
+          '»: monitores cujo local de cadastro ou o local do PC ligado coincidem. Monitores sem esse local em nenhum dos dois não aparecem.';
       }
     }
 
@@ -242,11 +242,17 @@
             '<p class="meta">Estado da vistoria do PC</p>' +
             badgeMonVistoria(v.vistoria_pc);
         }
+        const locMon = it.localizacao
+          ? '<p class="meta">Local (monitor): <strong>' +
+            escapeHtml(String(it.localizacao)) +
+            '</strong></p>'
+          : '';
         div.innerHTML =
           '<p class="card-title">' +
           pat +
           (mod ? ' · ' + mod : '') +
           '</p>' +
+          locMon +
           corpo;
         lista.appendChild(div);
       }
@@ -344,7 +350,10 @@
           for (const m of mons) {
             const line =
               escapeHtml(m.patrimonio || '—') +
-              (m.modelo ? ' — ' + escapeHtml(m.modelo) : '');
+              (m.modelo ? ' — ' + escapeHtml(m.modelo) : '') +
+              (m.localizacao
+                ? ' · Local: ' + escapeHtml(m.localizacao)
+                : '');
             monBlock += '<li>' + line + '</li>';
           }
           monBlock += '</ul>';
@@ -421,6 +430,8 @@
   let detailPc = null;
   /** PC com auditoria já confirmada — só correção de nome */
   let ajusteNomePc = null;
+  /** Locais distintos vindos da API (PC + monitores da secretaria) para o select de filtro */
+  let locaisFiltroExtra = [];
 
   function norm(s) {
     return String(s || '')
@@ -461,6 +472,10 @@
       const t = String(c.localizacao || '').trim();
       if (!t) temSemLocal = true;
       else unique.add(t);
+    }
+    for (const x of locaisFiltroExtra) {
+      const t = String(x || '').trim();
+      if (t) unique.add(t);
     }
     const sorted = [...unique].sort((a, b) =>
       a.localeCompare(b, 'pt', { sensitivity: 'base' })
@@ -1064,6 +1079,7 @@
     const data = await loadComputadores();
     secretariaNome = data.secretaria && data.secretaria.nome;
     computadoresCache = data.computadores;
+    locaisFiltroExtra = Array.isArray(data.locais_filtro) ? data.locais_filtro : [];
     renderResumo(data.resumo);
     populateFiltroLocal();
     updateTabCounts();
