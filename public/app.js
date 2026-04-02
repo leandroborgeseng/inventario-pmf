@@ -199,6 +199,58 @@
       .some((t) => t.includes(q));
   }
 
+  const LOCAL_FILTRO_VAZIO = '__sem_local__';
+
+  function valorFiltroLocal() {
+    const sel = $('inv-filtro-local');
+    return sel ? sel.value || '' : '';
+  }
+
+  function matchesLocal(c, localSel) {
+    if (!localSel) return true;
+    const loc = String(c.localizacao || '').trim();
+    if (localSel === LOCAL_FILTRO_VAZIO) return !loc;
+    return loc === localSel;
+  }
+
+  function populateFiltroLocal() {
+    const sel = $('inv-filtro-local');
+    if (!sel) return;
+    const prev = sel.value;
+    const unique = new Set();
+    let temSemLocal = false;
+    for (const c of computadoresCache) {
+      const t = String(c.localizacao || '').trim();
+      if (!t) temSemLocal = true;
+      else unique.add(t);
+    }
+    const sorted = [...unique].sort((a, b) =>
+      a.localeCompare(b, 'pt', { sensitivity: 'base' })
+    );
+
+    sel.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = '';
+    optAll.textContent = 'Todos os locais';
+    sel.appendChild(optAll);
+    for (const loc of sorted) {
+      const o = document.createElement('option');
+      o.value = loc;
+      o.textContent = loc;
+      sel.appendChild(o);
+    }
+    if (temSemLocal) {
+      const o = document.createElement('option');
+      o.value = LOCAL_FILTRO_VAZIO;
+      o.textContent = '(sem local definido)';
+      sel.appendChild(o);
+    }
+
+    const retains = [...sel.options].some((opt) => opt.value === prev);
+    if (retains) sel.value = prev;
+    else sel.value = '';
+  }
+
   function isPendente(c) {
     return !c.auditoria;
   }
@@ -338,8 +390,12 @@
     if (!dl) return;
     dl.innerHTML = '';
     const q = norm($('inv-busca').value);
+    const locF = valorFiltroLocal();
     const pool = computadoresCache.filter(
-      (c) => isPendente(c) && (q ? matchesBusca(c, $('inv-busca').value) : true)
+      (c) =>
+        isPendente(c) &&
+        matchesLocal(c, locF) &&
+        (q ? matchesBusca(c, $('inv-busca').value) : true)
     );
     const seen = new Set();
     let n = 0;
@@ -364,9 +420,11 @@
     root.innerHTML = '';
 
     const q = $('inv-busca') ? $('inv-busca').value : '';
+    const locF = valorFiltroLocal();
     const list = computadoresCache.filter((c) => {
       if (currentTab === 'pendente' && !isPendente(c)) return false;
       if (currentTab === 'feitos' && !isFeito(c)) return false;
+      if (!matchesLocal(c, locF)) return false;
       return matchesBusca(c, q);
     });
 
@@ -751,6 +809,7 @@
     secretariaNome = data.secretaria && data.secretaria.nome;
     computadoresCache = data.computadores;
     renderResumo(data.resumo);
+    populateFiltroLocal();
     updateTabCounts();
     updateDatalist();
     renderLista();
@@ -859,6 +918,14 @@
         updateDatalist();
         renderLista();
       }, 180);
+    });
+  }
+
+  const filtroLocalEl = $('inv-filtro-local');
+  if (filtroLocalEl) {
+    filtroLocalEl.addEventListener('change', () => {
+      updateDatalist();
+      renderLista();
     });
   }
 

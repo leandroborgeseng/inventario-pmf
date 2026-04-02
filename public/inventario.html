@@ -68,8 +68,15 @@
           </button>
         </div>
 
-        <div class="card">
-          <label class="field" for="inv-busca">Buscar (nome, patrimônio ou local)</label>
+        <div class="card inv-filtros-card">
+          <label class="field" for="inv-filtro-local">Filtrar por local</label>
+          <select id="inv-filtro-local" class="field-sm" aria-describedby="inv-filtro-local-hint">
+            <option value="">Todos os locais</option>
+          </select>
+          <p id="inv-filtro-local-hint" class="muted inv-filtro-hint">
+            Escolha um setor (ex.: RH - SETOR DE HARDWARE) para ver só equipamentos desse local; combine com a busca abaixo.
+          </p>
+          <label class="field inv-filtro-busca-lbl" for="inv-busca">Buscar (nome, patrimônio ou local)</label>
           <input
             id="inv-busca"
             type="search"

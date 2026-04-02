@@ -684,3 +684,13 @@ select.field-sm {
   margin: 0;
   font-size: 0.92rem;
 }
+
+.inv-filtros-card .inv-filtro-hint {
+  margin: 0.35rem 0 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.inv-filtros-card .inv-filtro-busca-lbl {
+  margin-top: 0.15rem;
+}
