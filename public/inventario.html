@@ -117,6 +117,41 @@
         </div>
       </div>
 
+      <div id="screen-ajuste-nome" class="screen">
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-voltar-nome">Voltar</button>
+        </div>
+        <div class="inv-help-banner card inv-help-compact">
+          <a
+            href="/ajuda-nome-computador.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Guia: como ver o nome correto do computador</a
+          >
+        </div>
+        <h1>Corrigir nome da máquina</h1>
+        <p class="sub" id="nome-ajuste-sub"></p>
+        <div class="card">
+          <label class="field" for="nome-ajuste-input"
+            >Nome da máquina <span class="req">*</span></label
+          >
+          <input
+            id="nome-ajuste-input"
+            type="text"
+            class="field-sm"
+            placeholder="Corrija se digitou errado"
+            autocomplete="off"
+          />
+          <p class="muted" style="margin: 0.5rem 0 0; font-size: 0.88rem">
+            Só o nome é alterado; monitores já ligados a este equipamento permanecem iguais.
+          </p>
+          <button type="button" class="btn btn-primary" id="btn-salvar-nome" style="margin-top: 1rem">
+            Salvar nome
+          </button>
+          <div class="err" id="nome-ajuste-err"></div>
+        </div>
+      </div>
+
       <div id="screen-monitors" class="screen">
         <div class="topbar">
           <button type="button" class="btn btn-ghost" id="btn-voltar-mon">Voltar</button>

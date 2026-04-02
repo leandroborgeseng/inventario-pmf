@@ -139,6 +139,8 @@
   let buscaTimer = null;
   let monitorOptsCache = [];
   let detailPc = null;
+  /** PC com auditoria já confirmada — só correção de nome */
+  let ajusteNomePc = null;
 
   function norm(s) {
     return String(s || '')
@@ -241,7 +243,8 @@
             '</div>'
           : '<div class="pc-actions-mini">' +
             (audit.confirmado === 'confirmado'
-              ? '<button type="button" class="btn btn-success btn-inline" data-act="monitores">Ajustar monitores</button>'
+              ? '<button type="button" class="btn btn-ghost btn-inline" data-act="ajuste-nome">Ajustar nome</button>' +
+                '<button type="button" class="btn btn-success btn-inline" data-act="monitores">Ajustar monitores</button>'
               : '<button type="button" class="btn btn-ghost btn-inline" data-act="ver-resumo">Ver registro</button>') +
             '</div>');
 
@@ -249,6 +252,7 @@
         btn.addEventListener('click', () => {
           const act = btn.getAttribute('data-act');
           if (act === 'abrir') openDetail(c);
+          else if (act === 'ajuste-nome') openAjustarNome(c);
           else if (act === 'monitores') openMonitoresFlow(c);
           else if (act === 'ver-resumo') verResumoAuditoria(c);
           else onQuickAction(c, act);
@@ -384,6 +388,52 @@
   $('btn-voltar-detail').onclick = () => {
     showScreen('screen-list');
     detailPc = null;
+  };
+
+  function openAjustarNome(c) {
+    if (!c.auditoria || c.auditoria.confirmado !== 'confirmado') return;
+    ajusteNomePc = c;
+    showErr('nome-ajuste-err', '');
+    const pat = c.patrimonio || '—';
+    $('nome-ajuste-sub').innerHTML =
+      'Patrimônio <strong>' +
+      escapeHtml(pat) +
+      '</strong> · Local: ' +
+      escapeHtml(c.localizacao || '—');
+    $('nome-ajuste-input').value = c.nome_maquina || '';
+    showScreen('screen-ajuste-nome');
+  }
+
+  $('btn-voltar-nome').onclick = () => {
+    ajusteNomePc = null;
+    showScreen('screen-list');
+  };
+
+  $('btn-salvar-nome').onclick = async () => {
+    showErr('nome-ajuste-err', '');
+    const c = ajusteNomePc;
+    if (!c) return;
+    const nome = ($('nome-ajuste-input').value || '').trim();
+    if (!nome) {
+      showErr('nome-ajuste-err', 'Informe o nome da máquina.');
+      return;
+    }
+    const { token, senha } = getAuth();
+    try {
+      await apiAuditoria({
+        token,
+        senha,
+        computador_id: c.id,
+        confirmado: 'confirmado',
+        nome_maquina: nome,
+      });
+      c.nome_maquina = nome;
+      ajusteNomePc = null;
+      await refreshData();
+      showScreen('screen-list');
+    } catch (e) {
+      showErr('nome-ajuste-err', e.message);
+    }
   };
 
   function fillMonitorSelects(preselect) {
@@ -544,6 +594,7 @@
     clearAuth();
     $('senha').value = '';
     detailPc = null;
+    ajusteNomePc = null;
     showScreen('screen-login');
   };
 
