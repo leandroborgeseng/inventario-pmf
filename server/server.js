@@ -591,6 +591,93 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/relatorio-vistoria/:token — X-Senha.
+ * Equipamentos já com registo de vistoria e monitores associados (quando aplicável).
+ * ?local= opcional — mesmo critério do filtro da lista.
+ */
+app.get('/api/relatorio-vistoria/:token', async (req, res) => {
+  try {
+    const senha = req.headers['x-senha'] || req.query.senha;
+    const s = await validateSecretariaAccess(req.params.token, senha);
+    if (!s) return res.status(401).json({ error: 'Não autorizado' });
+
+    const localRaw = req.query.local;
+    const hasLocal =
+      localRaw != null &&
+      String(localRaw).trim() !== '' &&
+      String(localRaw).trim() !== 'undefined';
+    const localFilter = hasLocal ? String(localRaw) : '';
+
+    const pcs = await dbAll(
+      `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao,
+              a.id AS auditoria_id, a.confirmado, a.observacao, a.data AS audit_data
+       FROM computadores c
+       INNER JOIN auditoria a ON a.computador_id = c.id
+       WHERE c.secretaria_id = ?
+       ORDER BY c.localizacao COLLATE NOCASE, c.nome_maquina COLLATE NOCASE, c.patrimonio COLLATE NOCASE`,
+      [s.id]
+    );
+
+    let filtered = pcs;
+    if (localFilter) {
+      const semLocalToken = '__sem_local__';
+      filtered = pcs.filter((p) => {
+        const loc = String(p.localizacao || '').trim();
+        if (localFilter === semLocalToken) return !loc;
+        return loc === localFilter;
+      });
+    }
+
+    const audIds = [
+      ...new Set(
+        filtered.map((p) => p.auditoria_id).filter((id) => id != null)
+      ),
+    ];
+    const monByAud = new Map();
+    if (audIds.length) {
+      const ph = audIds.map(() => '?').join(',');
+      const ms = await dbAll(
+        `SELECT am.auditoria_id AS aid, m.id AS mid, m.patrimonio, m.modelo
+         FROM auditoria_monitores am
+         JOIN monitores m ON m.id = am.monitor_id
+         WHERE am.auditoria_id IN (${ph}) AND am.confirmado = 1
+         ORDER BY m.patrimonio COLLATE NOCASE, m.id`,
+        audIds
+      );
+      for (const row of ms) {
+        if (!monByAud.has(row.aid)) monByAud.set(row.aid, []);
+        monByAud.get(row.aid).push({
+          id: row.mid,
+          patrimonio: row.patrimonio,
+          modelo: row.modelo,
+        });
+      }
+    }
+
+    const itens = filtered.map((p) => ({
+      computador_id: p.id,
+      nome_maquina: p.nome_maquina,
+      patrimonio: p.patrimonio,
+      localizacao: p.localizacao,
+      vistoria: p.confirmado,
+      observacao: p.observacao,
+      data_auditoria: p.audit_data,
+      monitores: monByAud.get(p.auditoria_id) || [],
+    }));
+
+    res.json({
+      ok: true,
+      secretaria: { nome: s.nome },
+      filtro_local: localFilter || null,
+      total: itens.length,
+      itens,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /** POST /api/auditoria — body: ..., nome_maquina obrigatório se confirmado=confirmado */
 app.post('/api/auditoria', async (req, res) => {
   try {

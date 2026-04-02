@@ -37,9 +37,12 @@
             >Como descobrir o nome do computador (guia da TI — abre em nova aba)</a
           >
         </div>
-        <div class="topbar">
+        <div class="topbar topbar-multi">
           <button type="button" class="btn btn-ghost" id="btn-monitores-painel">
             Ver monitores
+          </button>
+          <button type="button" class="btn btn-ghost" id="btn-relatorio-vistoria">
+            Relatório
           </button>
           <button type="button" class="btn btn-ghost" id="btn-sair">Sair</button>
         </div>
@@ -116,6 +119,18 @@
 
         <div id="lista-computadores"></div>
         <div class="err" id="list-err"></div>
+      </div>
+
+      <div id="screen-relatorio-vistoria" class="screen">
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-voltar-relatorio-vistoria">
+            Voltar à lista
+          </button>
+        </div>
+        <h1>Relatório — vistoria</h1>
+        <p class="sub" id="rel-vistoria-sub"></p>
+        <div class="err" id="rel-vistoria-err"></div>
+        <div id="rel-vistoria-lista"></div>
       </div>
 
       <div id="screen-detail" class="screen">

@@ -228,6 +228,15 @@ input:focus {
   margin-bottom: 1rem;
 }
 
+.topbar-multi {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.topbar-multi .btn {
+  flex: 0 1 auto;
+}
+
 .topbar .btn {
   width: auto;
   min-height: 44px;
@@ -685,4 +694,27 @@ select.field-sm {
 .inv-mon-card .inv-mon-explica {
   margin: 0.45rem 0 0;
   font-size: 0.85rem;
+}
+
+.inv-rel-vistoria-card .inv-rel-badge-row {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.inv-rel-mon-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0.65rem 0 0.35rem;
+}
+
+.inv-rel-mon-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.inv-rel-mon-empty {
+  margin: 0.25rem 0 0;
+  font-size: 0.88rem;
 }

@@ -282,6 +282,119 @@
     );
   }
 
+  async function apiRelatorioVistoria() {
+    const { token, senha } = getAuth();
+    const loc = valorFiltroLocal();
+    const q = loc ? '?local=' + encodeURIComponent(loc) : '';
+    const r = await fetch(
+      '/api/relatorio-vistoria/' + encodeURIComponent(token) + q,
+      { headers: { 'X-Senha': senha } }
+    );
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erro ao carregar relatório');
+    return j;
+  }
+
+  function renderRelatorioVistoria(data) {
+    const sub = $('rel-vistoria-sub');
+    const lista = $('rel-vistoria-lista');
+    const locSel = valorFiltroLocal();
+    const locLabel = (() => {
+      const sel = $('inv-filtro-local');
+      if (!sel || !locSel) return '';
+      const opt = sel.options[sel.selectedIndex];
+      return opt ? opt.textContent.trim() : '';
+    })();
+
+    if (sub) {
+      let html =
+        '<span>' +
+        escapeHtml(data.secretaria && data.secretaria.nome ? data.secretaria.nome : '') +
+        '</span> · <strong>' +
+        escapeHtml(String(data.total != null ? data.total : 0)) +
+        '</strong> equipamento(s) com vistoria registada';
+      if (locSel) {
+        html +=
+          ' · filtro de local: <strong>' + escapeHtml(locLabel) + '</strong>';
+      }
+      sub.innerHTML = html;
+    }
+
+    if (!lista) return;
+    lista.innerHTML = '';
+    const itens = data.itens || [];
+    if (!itens.length) {
+      lista.innerHTML =
+        '<p class="muted">Nenhum equipamento com vistoria neste filtro. Noutros casos, use «Todos os locais» ou confira se já existem registos na aba «Já inventariados».</p>';
+      return;
+    }
+
+    for (const it of itens) {
+      const div = document.createElement('div');
+      div.className = 'card inv-rel-vistoria-card';
+      const mons = it.monitores || [];
+      let monBlock = '';
+      if (it.vistoria === 'confirmado') {
+        monBlock += '<p class="inv-rel-mon-title">Monitores associados</p>';
+        if (!mons.length) {
+          monBlock +=
+            '<p class="muted inv-rel-mon-empty">Nenhum monitor escolhido nesta vistoria (ou ainda não gravado).</p>';
+        } else {
+          monBlock += '<ul class="inv-rel-mon-list">';
+          for (const m of mons) {
+            const line =
+              escapeHtml(m.patrimonio || '—') +
+              (m.modelo ? ' — ' + escapeHtml(m.modelo) : '');
+            monBlock += '<li>' + line + '</li>';
+          }
+          monBlock += '</ul>';
+        }
+      } else {
+        monBlock +=
+          '<p class="muted">Para «outro local» ou «não encontrado», a vistoria não mantém monitores ligados neste fluxo.</p>';
+      }
+
+      let obs = '';
+      if (it.observacao && String(it.observacao).trim()) {
+        obs =
+          '<p class="meta">Observação: ' +
+          escapeHtml(it.observacao) +
+          '</p>';
+      }
+
+      div.innerHTML =
+        '<p class="card-title">' +
+        escapeHtml(it.nome_maquina || '(sem nome)') +
+        '</p>' +
+        '<p class="meta">Património: ' +
+        escapeHtml(it.patrimonio || '—') +
+        '</p>' +
+        '<p class="meta">Local: ' +
+        escapeHtml(it.localizacao || '—') +
+        '</p>' +
+        '<div class="inv-rel-badge-row">' +
+        badgeHtml({ confirmado: it.vistoria }) +
+        '</div>' +
+        obs +
+        monBlock;
+      lista.appendChild(div);
+    }
+  }
+
+  async function openRelatorioVistoria() {
+    showErr('rel-vistoria-err', '');
+    const lista = $('rel-vistoria-lista');
+    if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    showScreen('screen-relatorio-vistoria');
+    try {
+      const d = await apiRelatorioVistoria();
+      renderRelatorioVistoria(d);
+    } catch (e) {
+      showErr('rel-vistoria-err', e.message);
+      if (lista) lista.innerHTML = '';
+    }
+  }
+
   function escapeHtml(s) {
     const d = document.createElement('div');
     d.textContent = s == null ? '' : String(s);
@@ -1113,6 +1226,13 @@
 
   const btnMonPainel = $('btn-monitores-painel');
   if (btnMonPainel) btnMonPainel.onclick = () => openMonitoresPainel();
+
+  const btnRelVistoria = $('btn-relatorio-vistoria');
+  if (btnRelVistoria) btnRelVistoria.onclick = () => openRelatorioVistoria();
+
+  const btnVoltarRelVistoria = $('btn-voltar-relatorio-vistoria');
+  if (btnVoltarRelVistoria)
+    btnVoltarRelVistoria.onclick = () => showScreen('screen-list');
 
   const btnVoltarMonPainel = $('btn-voltar-mon-painel');
   if (btnVoltarMonPainel)
