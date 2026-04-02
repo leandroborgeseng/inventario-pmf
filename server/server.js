@@ -60,14 +60,36 @@ function dbRun(sql, params = []) {
   });
 }
 
-async function getSecretariaByToken(token) {
-  if (!token) return null;
-  return dbGet('SELECT * FROM secretarias WHERE token = ?', [token]);
+/** Token na URL ou no corpo pode vir com espaços/encoding; compara senha com trim. */
+function normalizeClientToken(raw) {
+  if (raw == null) return '';
+  let t = String(raw).trim();
+  if (!t) return '';
+  try {
+    t = decodeURIComponent(t);
+  } catch (_) {
+    /* já decodificado */
+  }
+  return String(t).trim();
 }
 
-async function validateSecretariaAccess(token, senha) {
-  const s = await getSecretariaByToken(token);
-  if (!s || s.senha !== senha) return null;
+async function getSecretariaByToken(rawToken) {
+  const token = normalizeClientToken(rawToken);
+  if (!token) return null;
+  let row = await dbGet('SELECT * FROM secretarias WHERE token = ?', [token]);
+  if (row) return row;
+  return dbGet(
+    'SELECT * FROM secretarias WHERE LOWER(TRIM(token)) = LOWER(?)',
+    [token]
+  );
+}
+
+async function validateSecretariaAccess(rawToken, rawSenha) {
+  const s = await getSecretariaByToken(rawToken);
+  if (!s) return null;
+  const a = rawSenha == null ? '' : String(rawSenha).trim();
+  const b = s.senha == null ? '' : String(s.senha).trim();
+  if (a !== b) return null;
   return s;
 }
 
@@ -144,8 +166,25 @@ app.post('/api/login-token', async (req, res) => {
   try {
     const { token, senha } = req.body || {};
     const s = await validateSecretariaAccess(token, senha);
-    if (!s)
-      return res.status(401).json({ ok: false, error: 'Token ou senha inválidos' });
+    if (!s) {
+      try {
+        const n = await dbGet('SELECT COUNT(*) AS c FROM secretarias');
+        if (n && n.c === 0) {
+          return res.status(401).json({
+            ok: false,
+            error:
+              'Nenhuma secretaria cadastrada. No painel admin use «Reimportar planilhas» ou rode o import no servidor.',
+          });
+        }
+      } catch (_) {
+        /* ignora */
+      }
+      return res.status(401).json({
+        ok: false,
+        error:
+          'Token ou senha incorretos. Confira o link completo (copie de novo do admin), a senha atual (sem espaço no começo/fim) e se a base foi importada.',
+      });
+    }
     res.json({
       ok: true,
       secretaria: { id: s.id, nome: s.nome },

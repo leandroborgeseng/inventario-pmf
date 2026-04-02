@@ -2,8 +2,19 @@
   const TOKEN_KEY = 'inv_token_url';
   const SENHA_KEY = 'inv_senha';
 
+  function normToken(t) {
+    if (t == null) return null;
+    let x = String(t).trim();
+    if (!x) return null;
+    try {
+      x = decodeURIComponent(x);
+    } catch (_) {}
+    x = String(x).trim();
+    return x || null;
+  }
+
   const pathMatch = window.location.pathname.match(/^\/inventario\/([^/]+)\/?$/);
-  const tokenFromUrl = pathMatch ? pathMatch[1] : null;
+  const tokenFromUrl = pathMatch ? normToken(pathMatch[1]) : null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -21,14 +32,16 @@
   }
 
   function getAuth() {
-    const token = tokenFromUrl || sessionStorage.getItem(TOKEN_KEY);
+    const stored = sessionStorage.getItem(TOKEN_KEY);
+    const token = tokenFromUrl || normToken(stored) || stored;
     const senha = sessionStorage.getItem(SENHA_KEY);
     return { token, senha };
   }
 
   function setAuth(token, senha) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.setItem(SENHA_KEY, senha);
+    const nt = normToken(token);
+    sessionStorage.setItem(TOKEN_KEY, nt || token);
+    sessionStorage.setItem(SENHA_KEY, senha == null ? '' : String(senha).trim());
   }
 
   function clearAuth() {
@@ -503,7 +516,7 @@
 
   $('btn-login').onclick = async () => {
     showErr('login-err', '');
-    const senha = $('senha').value;
+    const senha = ($('senha').value || '').trim();
     if (!tokenFromUrl) {
       showErr('login-err', 'Link inválido.');
       return;
@@ -516,7 +529,7 @@
       const r = await fetch('/api/login-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: tokenFromUrl, senha }),
+        body: JSON.stringify({ token: tokenFromUrl, senha: senha }),
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || 'Login inválido');
@@ -540,8 +553,12 @@
       $('btn-login').disabled = true;
       return;
     }
+    const storedTok = normToken(sessionStorage.getItem(TOKEN_KEY));
+    if (storedTok && storedTok !== tokenFromUrl) {
+      clearAuth();
+    }
     const { token, senha } = getAuth();
-    if (token === tokenFromUrl && senha) {
+    if (normToken(token) === tokenFromUrl && senha) {
       afterLogin();
     }
   }
