@@ -7,19 +7,21 @@
  * monitores: patrimonio, modelo, secretaria
  *
  * Secretarias existentes (mesmo nome) mantêm token e senha.
- * Novas secretarias recebem token aleatório e senha IMPORT_DEFAULT_SENHA.
+ * Novas secretarias recebem token estável (hash do nome + slug) e senha IMPORT_DEFAULT_SENHA.
+ * Assim, novo banco + mesmo Excel + mesma IMPORT_DEFAULT_SENHA = mesmos links e senhas após cada deploy.
  *
  * Uso: npm run import
  *
  * Opcional (Railway / caminhos customizados):
- *   DB_PATH, COMPUTADORES_XLSX, MONITORES_XLSX, IMPORT_DEFAULT_SENHA
+ *   DB_PATH, COMPUTADORES_XLSX, MONITORES_XLSX, IMPORT_DEFAULT_SENHA,
+ *   SECRETARIA_TOKEN_SALT (opcional, fixe no Railway para URL menos óbvia; se mudar, os tokens mudam)
  */
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const XLSX = require('xlsx');
 const sqlite3 = require('sqlite3').verbose();
-const { v4: uuidv4 } = require('uuid');
 
 const rootDir = path.join(__dirname, '..');
 const DB_PATH =
@@ -47,9 +49,17 @@ function normKey(s) {
     .replace(/[^a-z0-9_]/g, '');
 }
 
+/** Token determinístico: mesmo nome de secretaria → mesmo token em qualquer import/deploy. */
 function makeTokenForNome(nome) {
-  const s = normKey(nome).replace(/_/g, '-') || 'sec';
-  return `${s}-${uuidv4().slice(0, 8)}`;
+  const raw = String(nome || '').trim();
+  let slug = normKey(nome).replace(/_/g, '-') || 'sec';
+  if (slug.length > 48) slug = slug.slice(0, 48);
+  const salt = String(
+    process.env.SECRETARIA_TOKEN_SALT || process.env.IMPORT_TOKEN_SALT || ''
+  );
+  const payload = salt ? `${raw}\u0000${salt}` : raw;
+  const h = crypto.createHash('sha256').update(payload, 'utf8').digest('hex').slice(0, 12);
+  return `${slug}-${h}`;
 }
 
 function pickRow(row, aliases) {

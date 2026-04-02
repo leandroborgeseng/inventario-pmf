@@ -23,9 +23,11 @@ npm run import
 
 ## Railway
 
-1. Variáveis: `ADMIN_SENHA`, `DB_PATH=/data/database.sqlite`, `PORT` (o Railway define automaticamente).
-2. Volume: monte um disco em **`/data`** para o SQLite persistir entre deploys.
-3. **Importar o Excel no servidor:** depois do deploy, garanta os `.xlsx` no ambiente e rode o import, por exemplo:
+1. Variáveis: `ADMIN_SENHA`, `DB_PATH=/data/database.sqlite`, `PORT` (o Railway define automaticamente). **Defina `IMPORT_DEFAULT_SENHA`** com o valor que as secretarias vão usar (é a senha criada no primeiro import de cada secretaria nova; import seguinte mantém token e senha já gravados).
+2. **`PUBLIC_URL`** (ou `PUBLIC_BASE_URL`): URL fixa do app (`https://seu-dominio.up.railway.app`) — o admin monta os links completos; sem isso o domínio ainda costuma ser estável no Railway.
+3. Volume: monte um disco em **`/data`** para o SQLite persistir entre deploys (recomendado: assim não perde vistorias; tokens novos no código usam hash estável do nome, mas dados ficam no banco).
+4. Tokens por secretaria são **determinísticos** (nome na planilha + `SECRETARIA_TOKEN_SALT` opcional): deploy com banco vazio + mesmo Excel + mesma `IMPORT_DEFAULT_SENHA` (e mesmo salt, se usar) → **mesmos caminhos** `/inventario/...` e mesmas senhas iniciais.
+5. **Importar o Excel no servidor:** depois do deploy, garanta os `.xlsx` no ambiente e rode o import, por exemplo:
    - [Railway CLI](https://docs.railway.com/develop/cli): `railway run --service <nome> -- npm run import`
    - Antes disso, envie `computadores.xlsx` e `monitores.xlsx` para um caminho no volume (ex.: `/data/`) e configure `COMPUTADORES_XLSX` e `MONITORES_XLSX` nas variáveis do serviço apontando para esses caminhos.
 
