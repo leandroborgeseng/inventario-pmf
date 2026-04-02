@@ -133,6 +133,18 @@
     return d.innerHTML;
   }
 
+  /** Apenas letras (ASCII) e números, maiúsculas — remove hífens, espaços, acentos. */
+  function normalizeNomeMaquinaInput(s) {
+    return String(s || '')
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[^A-Za-z0-9]/g, '')
+      .toUpperCase();
+  }
+
+  let detailNomePrimeiroFoco = false;
+  let ajusteNomePrimeiroFoco = false;
+
   let computadoresCache = [];
   let secretariaNome = '';
   let currentTab = 'pendente';
@@ -274,6 +286,7 @@
       escapeHtml(loc);
 
     $('detail-nome').value = c.nome_maquina || '';
+    detailNomePrimeiroFoco = true;
     $('detail-nome').readOnly = false;
 
     $('detail-confirm').style.display = 'inline-flex';
@@ -317,9 +330,12 @@
 
   $('detail-confirm').onclick = async () => {
     showErr('detail-err', '');
-    const nome = ($('detail-nome').value || '').trim();
+    const nome = normalizeNomeMaquinaInput($('detail-nome').value);
     if (!nome) {
-      showErr('detail-err', 'Informe o nome da máquina.');
+      showErr(
+        'detail-err',
+        'Informe o nome da máquina (somente letras e números, em maiúsculas).'
+      );
       return;
     }
     const { token, senha } = getAuth();
@@ -401,6 +417,7 @@
       '</strong> · Local: ' +
       escapeHtml(c.localizacao || '—');
     $('nome-ajuste-input').value = c.nome_maquina || '';
+    ajusteNomePrimeiroFoco = true;
     showScreen('screen-ajuste-nome');
   }
 
@@ -413,9 +430,12 @@
     showErr('nome-ajuste-err', '');
     const c = ajusteNomePc;
     if (!c) return;
-    const nome = ($('nome-ajuste-input').value || '').trim();
+    const nome = normalizeNomeMaquinaInput($('nome-ajuste-input').value);
     if (!nome) {
-      showErr('nome-ajuste-err', 'Informe o nome da máquina.');
+      showErr(
+        'nome-ajuste-err',
+        'Informe o nome da máquina (somente letras e números, em maiúsculas).'
+      );
       return;
     }
     const { token, senha } = getAuth();
@@ -612,6 +632,33 @@
     if (normToken(token) === tokenFromUrl && senha) {
       afterLogin();
     }
+  }
+
+  const elDetailNome = $('detail-nome');
+  const elAjusteNome = $('nome-ajuste-input');
+  if (elDetailNome) {
+    elDetailNome.addEventListener('focus', () => {
+      if (detailNomePrimeiroFoco) {
+        elDetailNome.value = '';
+        detailNomePrimeiroFoco = false;
+      }
+    });
+    elDetailNome.addEventListener('input', () => {
+      const norm = normalizeNomeMaquinaInput(elDetailNome.value);
+      if (elDetailNome.value !== norm) elDetailNome.value = norm;
+    });
+  }
+  if (elAjusteNome) {
+    elAjusteNome.addEventListener('focus', () => {
+      if (ajusteNomePrimeiroFoco) {
+        elAjusteNome.value = '';
+        ajusteNomePrimeiroFoco = false;
+      }
+    });
+    elAjusteNome.addEventListener('input', () => {
+      const norm = normalizeNomeMaquinaInput(elAjusteNome.value);
+      if (elAjusteNome.value !== norm) elAjusteNome.value = norm;
+    });
   }
 
   init();

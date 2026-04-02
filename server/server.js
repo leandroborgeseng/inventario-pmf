@@ -124,6 +124,15 @@ async function validateSecretariaAccess(rawToken, rawSenha) {
   return s;
 }
 
+/** Nome na vistoria: só letras (sem acento) e dígitos, maiúsculas — alinhado ao cliente. */
+function normalizeNomeMaquinaValor(raw) {
+  return String(raw || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase();
+}
+
 function validateAdmin(req) {
   const pwd =
     req.headers['x-admin-password'] ||
@@ -427,11 +436,12 @@ app.post('/api/auditoria', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Computador não encontrado' });
 
     if (confirmado === 'confirmado') {
-      const nm = String(nome_maquina || '').trim();
+      const nm = normalizeNomeMaquinaValor(nome_maquina);
       if (!nm)
         return res.status(400).json({
           ok: false,
-          error: 'Nome da máquina é obrigatório para confirmar o equipamento.',
+          error:
+            'Nome da máquina é obrigatório (use apenas letras e números, como no Windows).',
         });
       await dbRun('UPDATE computadores SET nome_maquina = ? WHERE id = ?', [
         nm,

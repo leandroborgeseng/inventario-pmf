@@ -93,12 +93,14 @@
             id="detail-nome"
             type="text"
             class="field-sm"
-            placeholder="Ex.: PC-SALA-01 ou conforme aparece no Windows"
+            inputmode="text"
+            autocapitalize="characters"
             autocomplete="off"
+            placeholder="Ex.: DESKTOP01 (só letras maiúsculas e números)"
             required
           />
           <p class="muted" style="margin: 0.5rem 0 0; font-size: 0.88rem">
-            Obrigatório. O nome deve bater com o que aparece no computador físico.
+            Toque no campo para limpar e digitar de novo. Apenas letras (A–Z) e números (0–9), como no nome do Windows.
           </p>
           <div class="btn-row side" style="margin-top: 1rem">
             <button type="button" class="btn btn-success" id="detail-confirm">
@@ -139,11 +141,12 @@
             id="nome-ajuste-input"
             type="text"
             class="field-sm"
-            placeholder="Corrija se digitou errado"
+            autocapitalize="characters"
             autocomplete="off"
+            placeholder="Só letras maiúsculas e números"
           />
           <p class="muted" style="margin: 0.5rem 0 0; font-size: 0.88rem">
-            Só o nome é alterado; monitores já ligados a este equipamento permanecem iguais.
+            Toque no campo para limpar e redigitar. Só o nome é alterado; monitores ligados permanecem iguais.
           </p>
           <button type="button" class="btn btn-primary" id="btn-salvar-nome" style="margin-top: 1rem">
             Salvar nome
