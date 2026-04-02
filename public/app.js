@@ -214,6 +214,125 @@
     $('cnt-feitos').textContent = String(feitos);
   }
 
+  function renderResumo(r) {
+    const wrap = $('inv-dashboard');
+    if (!wrap) return;
+    if (!r || typeof r !== 'object') {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+
+    const total = r.computadores_total || 0;
+    const pct = Math.max(0, Math.min(100, Number(r.percent_vistoria_feita) || 0));
+    const bar = $('inv-dash-bar-fill');
+    const barTrack = $('inv-dash-progressbar');
+    const cap = $('inv-dash-caption');
+    const stats = $('inv-dash-stats');
+    const monEl = $('inv-dash-mon');
+    const idadeRoot = $('inv-dash-idade');
+
+    if (bar) bar.style.width = pct + '%';
+    if (barTrack) {
+      barTrack.setAttribute('aria-valuenow', String(Math.round(pct)));
+      barTrack.setAttribute('aria-valuemax', '100');
+    }
+
+    if (cap) {
+      if (total === 0) {
+        cap.textContent =
+          'Nenhum equipamento listado para esta secretaria. Se acabou de importar, confira no admin.';
+      } else {
+        const reg =
+          (r.confirmados || 0) +
+          (r.nao_encontrado || 0) +
+          (r.outro_local || 0);
+        cap.textContent =
+          reg +
+          ' de ' +
+          total +
+          ' equipamentos já têm registo de vistoria (' +
+          pct +
+          '%). ' +
+          (r.pendentes
+            ? 'Faltam ' + r.pendentes + ' na aba «A vistoriar».'
+            : 'Todas as linhas foram tratadas.');
+      }
+    }
+
+    if (stats) {
+      if (total === 0) {
+        stats.innerHTML = '';
+      } else {
+        function cell(n, lbl, cls) {
+          return (
+            '<div class="inv-dash-stat' +
+            (cls ? ' ' + cls : '') +
+            '"><span class="inv-dash-num">' +
+            escapeHtml(String(n)) +
+            '</span><span class="inv-dash-lbl">' +
+            escapeHtml(lbl) +
+            '</span></div>'
+          );
+        }
+        stats.innerHTML =
+          cell(r.pendentes || 0, 'A fazer', 'stat-pend') +
+          cell(r.confirmados || 0, 'Confirmados', 'stat-ok') +
+          cell(r.outro_local || 0, 'Outro local', 'stat-warn') +
+          cell(r.nao_encontrado || 0, 'Não encontrado', 'stat-no');
+      }
+    }
+
+    if (idadeRoot) {
+      idadeRoot.innerHTML = '';
+      if (total === 0) {
+        /* nada */
+      } else {
+        const id = r.idade || {};
+        const faixas = Array.isArray(id.faixas) ? id.faixas : [];
+        const rows = [];
+        if (id.sem_data > 0) {
+          rows.push({ label: 'Sem data de aquisição', count: id.sem_data });
+        }
+        faixas.forEach((f) => {
+          rows.push({ label: f.label, count: f.count || 0 });
+        });
+        const maxN = Math.max.apply(
+          null,
+          rows.map((x) => x.count).concat([1])
+        );
+        rows.forEach((row) => {
+          const pctBar =
+            maxN > 0 ? Math.round((row.count / maxN) * 1000) / 10 : 0;
+          const d = document.createElement('div');
+          d.className = 'inv-idade-row';
+          d.innerHTML =
+            '<span class="inv-idade-lbl">' +
+            escapeHtml(row.label) +
+            '</span><div class="inv-idade-bar-wrap"><div class="inv-idade-bar" style="width:' +
+            pctBar +
+            '%"></div></div><span class="inv-idade-n">' +
+            escapeHtml(String(row.count)) +
+            '</span>';
+          idadeRoot.appendChild(d);
+        });
+        if (!rows.length) {
+          idadeRoot.innerHTML =
+            '<p class="muted" style="margin:0">Sem dados de idade.</p>';
+        }
+      }
+    }
+
+    if (monEl) {
+      const m = r.monitores_total != null ? Number(r.monitores_total) : 0;
+      monEl.textContent =
+        m === 0
+          ? 'Nenhum monitor associado a esta secretaria no cadastro.'
+          : String(m) +
+            ' monitor(es) no cadastro (ligação à vistoria ao confirmar cada computador).';
+    }
+  }
+
   function updateDatalist() {
     const dl = $('inv-datalist');
     if (!dl) return;
@@ -631,6 +750,7 @@
     const data = await loadComputadores();
     secretariaNome = data.secretaria && data.secretaria.nome;
     computadoresCache = data.computadores;
+    renderResumo(data.resumo);
     updateTabCounts();
     updateDatalist();
     renderLista();

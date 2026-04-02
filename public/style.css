@@ -526,3 +526,161 @@ select.field-sm {
   font-size: 0.9rem;
   padding: 0 0.75rem;
 }
+
+/* Dashboard secretaria — andamento + idade */
+.inv-dashboard {
+  margin-bottom: 1.1rem;
+}
+
+.inv-dash-h {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+.inv-dash-bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inv-dash-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  transition: width 0.35s ease;
+}
+
+.inv-dash-caption {
+  margin: 0.5rem 0 0.85rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.inv-dash-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 400px) {
+  .inv-dash-stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.inv-dash-stat {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.inv-dash-stat .inv-dash-num {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.inv-dash-stat .inv-dash-lbl {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.inv-dash-stat.stat-pend .inv-dash-num {
+  color: var(--accent);
+}
+
+.inv-dash-stat.stat-ok .inv-dash-num {
+  color: var(--success);
+}
+
+.inv-dash-stat.stat-warn .inv-dash-num {
+  color: var(--warn);
+}
+
+.inv-dash-stat.stat-no .inv-dash-num {
+  color: var(--danger);
+}
+
+.inv-dash-subh {
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin: 0.85rem 0 0.35rem;
+  color: var(--text);
+}
+
+.inv-dash-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.inv-dash-idade {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.inv-idade-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(50px, 88px);
+  gap: 0.35rem 0.6rem;
+  align-items: center;
+  font-size: 0.86rem;
+}
+
+.inv-idade-row .inv-idade-lbl {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+@media (min-width: 420px) {
+  .inv-idade-row {
+    grid-template-columns: 7.5rem 1fr 2.25rem;
+  }
+  .inv-idade-row .inv-idade-lbl {
+    grid-column: auto;
+  }
+}
+
+.inv-idade-bar-wrap {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  min-width: 0;
+}
+
+.inv-idade-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(61, 156, 245, 0.55);
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.inv-idade-n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.inv-dash-mon {
+  margin: 0;
+  font-size: 0.92rem;
+}

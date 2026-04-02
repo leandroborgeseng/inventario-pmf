@@ -45,6 +45,20 @@
           Separe o que falta fazer do que já foi registrado. Use a busca para achar por nome ou patrimônio.
         </p>
 
+        <section id="inv-dashboard" class="card inv-dashboard" hidden aria-label="Resumo da secretaria">
+          <h2 class="inv-dash-h">Andamento na sua secretaria</h2>
+          <div class="inv-dash-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="inv-dash-progressbar">
+            <div class="inv-dash-bar-fill" id="inv-dash-bar-fill"></div>
+          </div>
+          <p class="inv-dash-caption" id="inv-dash-caption"></p>
+          <div class="inv-dash-stats" id="inv-dash-stats"></div>
+          <h3 class="inv-dash-subh">Monitores (cadastro)</h3>
+          <p class="inv-dash-mon muted" id="inv-dash-mon"></p>
+          <h3 class="inv-dash-subh">Idade dos equipamentos</h3>
+          <p class="muted inv-dash-hint">Distribuição pela data de aquisição informada na planilha. Itens sem data aparecem em «Sem data».</p>
+          <div class="inv-dash-idade" id="inv-dash-idade"></div>
+        </section>
+
         <div class="inv-tabs" id="inv-tabs">
           <button type="button" class="inv-tab active" data-tab="pendente">
             A vistoriar <span class="inv-count" id="cnt-pend">0</span>

@@ -30,4 +30,28 @@ function idadeAquisicaoDeISO(iso) {
   return `${anos} anos`;
 }
 
-module.exports = { idadeAquisicaoDeISO };
+/** Anos completos desde data_aquisicao (inteiro ≥ 0), ou null se inválida/futura/sem data. */
+function anosCompletosDeISO(iso) {
+  if (!iso || typeof iso !== 'string') return null;
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const d = parseInt(m[3], 10);
+  if (y < 1900 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+
+  const inicio = new Date(y, mo - 1, d);
+  const hoje = new Date();
+  inicio.setHours(0, 0, 0, 0);
+  hoje.setHours(0, 0, 0, 0);
+  if (inicio > hoje) return null;
+
+  let anos = hoje.getFullYear() - inicio.getFullYear();
+  const md = hoje.getMonth() - inicio.getMonth();
+  const dd = hoje.getDate() - inicio.getDate();
+  if (md < 0 || (md === 0 && dd < 0)) anos--;
+  if (anos < 0) return null;
+  return anos;
+}
+
+module.exports = { idadeAquisicaoDeISO, anosCompletosDeISO };

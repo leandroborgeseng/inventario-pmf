@@ -17,7 +17,7 @@ const {
   isRailwayLike,
 } = require('./db-config');
 const { createFailLimiter } = require('./fail-limiter');
-const { idadeAquisicaoDeISO } = require('./idade-aquisicao');
+const { idadeAquisicaoDeISO, anosCompletosDeISO } = require('./idade-aquisicao');
 const DB_PATH = resolveDbPath();
 process.env.DB_PATH = DB_PATH;
 logDbPersistenceAndMaybeExit(DB_PATH);
@@ -123,6 +123,73 @@ async function validateSecretariaAccess(rawToken, rawSenha) {
   const b = s.senha == null ? '' : String(s.senha).trim();
   if (a !== b) return null;
   return s;
+}
+
+/** Resumo agregado para dashboard da secretaria (a partir das linhas cruas do JOIN). */
+function buildSecretariaResumo(rows, monitoresTotal) {
+  const faixaDefs = [
+    { key: 'menos_1', label: 'Menos de 1 ano' },
+    { key: '1_a_2', label: '1 a 2 anos' },
+    { key: '3_a_5', label: '3 a 5 anos' },
+    { key: '6_mais', label: '6 anos ou mais' },
+  ];
+  const faixaCounts = {
+    menos_1: 0,
+    '1_a_2': 0,
+    '3_a_5': 0,
+    '6_mais': 0,
+  };
+  let pendentes = 0;
+  let confirmados = 0;
+  let nao_encontrado = 0;
+  let outro_local = 0;
+  let sem_data = 0;
+  const total = rows.length;
+
+  for (const r of rows) {
+    if (!r.auditoria_id) pendentes++;
+    else if (r.audit_confirmado === 'confirmado') confirmados++;
+    else if (r.audit_confirmado === 'nao_encontrado') nao_encontrado++;
+    else if (r.audit_confirmado === 'outro_local') outro_local++;
+
+    const iso = r.data_aquisicao;
+    if (!iso || !String(iso).trim()) {
+      sem_data++;
+      continue;
+    }
+    const anos = anosCompletosDeISO(iso);
+    if (anos == null) {
+      sem_data++;
+      continue;
+    }
+    if (anos <= 0) faixaCounts.menos_1++;
+    else if (anos <= 2) faixaCounts['1_a_2']++;
+    else if (anos <= 5) faixaCounts['3_a_5']++;
+    else faixaCounts['6_mais']++;
+  }
+
+  const registados = confirmados + nao_encontrado + outro_local;
+  const percent_vistoria_feita =
+    total > 0 ? Math.round((registados / total) * 1000) / 10 : 0;
+
+  return {
+    computadores_total: total,
+    pendentes,
+    confirmados,
+    nao_encontrado,
+    outro_local,
+    percent_vistoria_feita,
+    monitores_total: monitoresTotal,
+    idade: {
+      sem_data,
+      com_data_valida: total - sem_data,
+      faixas: faixaDefs.map((f) => ({
+        key: f.key,
+        label: f.label,
+        count: faixaCounts[f.key],
+      })),
+    },
+  };
 }
 
 /** Nome na vistoria: só letras (sem acento) e dígitos, maiúsculas — alinhado ao cliente. */
@@ -346,7 +413,19 @@ app.get('/api/computadores/:token', async (req, res) => {
         : null,
     }));
 
-    res.json({ ok: true, secretaria: { nome: s.nome }, computadores: list });
+    const mCount = await dbGet(
+      'SELECT COUNT(*) AS c FROM monitores WHERE secretaria_id = ?',
+      [s.id]
+    );
+    const monitoresTotal = mCount && mCount.c != null ? Number(mCount.c) : 0;
+    const resumo = buildSecretariaResumo(rows, monitoresTotal);
+
+    res.json({
+      ok: true,
+      secretaria: { nome: s.nome },
+      resumo,
+      computadores: list,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
