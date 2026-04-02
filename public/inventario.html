@@ -67,6 +67,29 @@
           <datalist id="inv-datalist"></datalist>
         </div>
 
+        <div id="inv-batch-wrap" class="inv-batch-wrap" hidden>
+          <div class="card inv-batch-bar">
+            <p class="inv-batch-summary">
+              <span id="inv-batch-count">0</span> selecionado(s). Use na aba
+              <strong>A vistoriar</strong>: marque os cards, depois um dos botões de lote.
+            </p>
+            <div class="pc-actions-mini">
+              <button type="button" class="btn btn-warn btn-inline" id="btn-batch-outro">
+                Outro local (lote)
+              </button>
+              <button type="button" class="btn btn-ghost btn-inline" id="btn-batch-nao">
+                Não encontrado (lote)
+              </button>
+              <button type="button" class="btn btn-ghost btn-inline" id="btn-batch-sel-all">
+                Selecionar visíveis
+              </button>
+              <button type="button" class="btn btn-ghost btn-inline" id="btn-batch-clear">
+                Limpar seleção
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div id="lista-computadores"></div>
         <div class="err" id="list-err"></div>
       </div>

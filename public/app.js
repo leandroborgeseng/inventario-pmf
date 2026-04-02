@@ -60,6 +60,17 @@
     return j;
   }
 
+  async function apiAuditoriaLote(body) {
+    const r = await fetch('/api/auditoria-lote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erro ao salvar lote');
+    return j;
+  }
+
   async function apiMonitoresLista() {
     const { token, senha } = getAuth();
     const r = await fetch(
@@ -254,7 +265,14 @@
       const audit = c.auditoria;
       const quick = !audit;
 
+      const selRow = quick
+        ? '<div class="inv-card-select"><label><input type="checkbox" class="inv-pc-check" data-pc-id="' +
+          c.id +
+          '" /> Incluir no lote</label></div>'
+        : '';
+
       div.innerHTML =
+        selRow +
         '<p class="card-title">' +
         escapeHtml(c.nome_maquina || '(sem nome)') +
         '</p>' +
@@ -292,6 +310,29 @@
       });
       root.appendChild(div);
     });
+    updateBatchUi();
+  }
+
+  function getSelectedPendenteIds() {
+    return [
+      ...document.querySelectorAll('#lista-computadores .inv-pc-check:checked'),
+    ]
+      .map((cb) => parseInt(cb.getAttribute('data-pc-id'), 10))
+      .filter((n) => !Number.isNaN(n) && n > 0);
+  }
+
+  function updateBatchUi() {
+    const wrap = $('inv-batch-wrap');
+    const cnt = $('inv-batch-count');
+    if (!wrap || !cnt) return;
+    const onPend = currentTab === 'pendente';
+    wrap.hidden = !onPend;
+    cnt.textContent = String(
+      onPend
+        ? document.querySelectorAll('#lista-computadores .inv-pc-check:checked')
+            .length
+        : 0
+    );
   }
 
   function openDetail(c) {
@@ -605,6 +646,90 @@
       renderLista();
     });
   });
+
+  const listaRoot = $('lista-computadores');
+  if (listaRoot) {
+    listaRoot.addEventListener('change', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('inv-pc-check'))
+        updateBatchUi();
+    });
+  }
+
+  $('btn-batch-clear').onclick = () => {
+    document.querySelectorAll('#lista-computadores .inv-pc-check').forEach((cb) => {
+      cb.checked = false;
+    });
+    updateBatchUi();
+  };
+
+  $('btn-batch-sel-all').onclick = () => {
+    if (currentTab !== 'pendente') return;
+    document.querySelectorAll('#lista-computadores .inv-pc-check').forEach((cb) => {
+      cb.checked = true;
+    });
+    updateBatchUi();
+  };
+
+  $('btn-batch-outro').onclick = async () => {
+    showErr('list-err', '');
+    const ids = getSelectedPendenteIds();
+    if (!ids.length) {
+      showErr('list-err', 'Marque ao menos um equipamento pendente.');
+      return;
+    }
+    const observacao = window.prompt('Observação (opcional) para todos:', '') || null;
+    if (
+      !window.confirm(
+        'Registrar ' +
+          ids.length +
+          ' equipamento(s) como em outro local?'
+      )
+    )
+      return;
+    try {
+      const { token, senha } = getAuth();
+      await apiAuditoriaLote({
+        token,
+        senha,
+        computador_ids: ids,
+        confirmado: 'outro_local',
+        observacao,
+      });
+      await refreshData();
+    } catch (e) {
+      showErr('list-err', e.message);
+    }
+  };
+
+  $('btn-batch-nao').onclick = async () => {
+    showErr('list-err', '');
+    const ids = getSelectedPendenteIds();
+    if (!ids.length) {
+      showErr('list-err', 'Marque ao menos um equipamento pendente.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Registrar ' +
+          ids.length +
+          ' equipamento(s) como não encontrado (não existe mais neste local)?'
+      )
+    )
+      return;
+    try {
+      const { token, senha } = getAuth();
+      await apiAuditoriaLote({
+        token,
+        senha,
+        computador_ids: ids,
+        confirmado: 'nao_encontrado',
+        observacao: null,
+      });
+      await refreshData();
+    } catch (e) {
+      showErr('list-err', e.message);
+    }
+  };
 
   const buscaEl = $('inv-busca');
   if (buscaEl) {

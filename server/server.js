@@ -505,6 +505,81 @@ app.post('/api/auditoria', async (req, res) => {
 });
 
 /**
+ * POST /api/auditoria-lote — vários computadores: nao_encontrado | outro_local
+ * body: { token, senha, computador_ids: number[], confirmado, observacao? }
+ */
+app.post('/api/auditoria-lote', async (req, res) => {
+  try {
+    const { token, senha, computador_ids, confirmado, observacao } =
+      req.body || {};
+    const s = await validateSecretariaAccess(token, senha);
+    if (!s) return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!['nao_encontrado', 'outro_local'].includes(confirmado))
+      return res.status(400).json({
+        ok: false,
+        error: 'Lote só permite nao_encontrado ou outro_local',
+      });
+    const ids = [
+      ...new Set(
+        (Array.isArray(computador_ids) ? computador_ids : [])
+          .map((x) => parseInt(x, 10))
+          .filter((n) => !Number.isNaN(n) && n > 0)
+      ),
+    ];
+    if (!ids.length)
+      return res.status(400).json({
+        ok: false,
+        error: 'Selecione ao menos um equipamento pendente.',
+      });
+    if (ids.length > 500)
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Máximo 500 equipamentos por lote.' });
+
+    const now = new Date().toISOString();
+    const obs = observacao == null || observacao === '' ? null : String(observacao);
+
+    const ph = ids.map(() => '?').join(',');
+    const okRows = await dbAll(
+      `SELECT c.id FROM computadores c
+       LEFT JOIN auditoria a ON a.computador_id = c.id
+       WHERE c.secretaria_id = ? AND c.id IN (${ph}) AND a.id IS NULL`,
+      [s.id, ...ids]
+    );
+    if (okRows.length !== ids.length) {
+      return res.status(400).json({
+        ok: false,
+        error:
+          'Só é possível marcar em lote equipamentos ainda pendentes (sem registro) desta secretaria. Atualize a lista e tente de novo.',
+      });
+    }
+
+    await dbRun('BEGIN IMMEDIATE');
+    try {
+      for (const computador_id of ids) {
+        await dbRun(
+          `INSERT INTO auditoria (secretaria_id, computador_id, confirmado, observacao, data)
+           VALUES (?, ?, ?, ?, ?)`,
+          [s.id, computador_id, confirmado, obs, now]
+        );
+      }
+      await dbRun('COMMIT');
+    } catch (e) {
+      try {
+        await dbRun('ROLLBACK');
+      } catch (_) {
+        /* ignora */
+      }
+      throw e;
+    }
+
+    res.json({ ok: true, atualizados: ids.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
  * POST /api/auditoria-monitores
  * - monitores: [{ monitor_id, confirmado }] (lista completa), ou
  * - monitor_ids: [id1, id2] até 2 ids marcados como ligados a este PC
