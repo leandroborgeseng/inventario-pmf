@@ -10,6 +10,9 @@
  * Novas secretarias recebem token aleatório e senha IMPORT_DEFAULT_SENHA.
  *
  * Uso: npm run import
+ *
+ * Opcional (Railway / caminhos customizados):
+ *   DB_PATH, COMPUTADORES_XLSX, MONITORES_XLSX, IMPORT_DEFAULT_SENHA
  */
 
 const path = require('path');
@@ -22,8 +25,11 @@ const rootDir = path.join(__dirname, '..');
 const DB_PATH =
   process.env.DB_PATH || path.join(__dirname, 'database.sqlite');
 
-const COMPUTADORES_XLSX = path.join(rootDir, 'computadores.xlsx');
-const MONITORES_XLSX = path.join(rootDir, 'monitores.xlsx');
+const COMPUTADORES_XLSX =
+  process.env.COMPUTADORES_XLSX ||
+  path.join(rootDir, 'computadores.xlsx');
+const MONITORES_XLSX =
+  process.env.MONITORES_XLSX || path.join(rootDir, 'monitores.xlsx');
 
 function ensureDbDir() {
   const dir = path.dirname(DB_PATH);
