@@ -1,0 +1,11 @@
+node_modules/
+.env
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+.DS_Store
+/data/
+computadores.xlsx
+monitores.xlsx
+inventario-auditado.xlsx

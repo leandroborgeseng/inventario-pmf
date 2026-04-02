@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inventário — Auditoria</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <div id="screen-login" class="screen active">
+        <h1>Acesso à auditoria</h1>
+        <p class="sub" id="login-sub">Digite a senha da secretaria.</p>
+        <div class="card">
+          <label class="field" for="senha">Senha</label>
+          <input
+            id="senha"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Senha"
+          />
+          <button type="button" class="btn btn-primary" id="btn-login">
+            Entrar
+          </button>
+          <div class="err" id="login-err"></div>
+        </div>
+      </div>
+
+      <div id="screen-list" class="screen">
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-sair">Sair</button>
+        </div>
+        <h1 id="titulo-secretaria">Computadores</h1>
+        <p class="sub">Confirme cada equipamento. Os dados são salvos automaticamente.</p>
+        <div id="lista-computadores"></div>
+        <div class="err" id="list-err"></div>
+      </div>
+
+      <div id="screen-monitors" class="screen">
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-voltar-mon">Voltar</button>
+        </div>
+        <h1>Monitores conectados</h1>
+        <p class="sub" id="mon-pc-label"></p>
+        <div class="card">
+          <ul class="check-list" id="lista-monitores"></ul>
+          <button type="button" class="btn btn-success" id="btn-salvar-mon">
+            Salvar auditoria
+          </button>
+          <div class="err" id="mon-err"></div>
+        </div>
+      </div>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

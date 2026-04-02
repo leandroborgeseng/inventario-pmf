@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin — Auditoria</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <div id="admin-login" class="screen active">
+        <h1>Painel admin</h1>
+        <p class="sub">Informe a senha definida em ADMIN_SENHA no ambiente.</p>
+        <div class="card">
+          <label class="field" for="admin-senha">Senha admin</label>
+          <input id="admin-senha" type="password" autocomplete="current-password" />
+          <button type="button" class="btn btn-primary" id="btn-admin-go">Entrar</button>
+          <div class="err" id="admin-err"></div>
+        </div>
+      </div>
+      <div id="admin-dash" class="screen">
+        <h1>Relatório</h1>
+        <p class="sub" id="dash-updated"></p>
+        <div class="stat-grid" id="stat-grid"></div>
+        <button type="button" class="btn btn-success" id="btn-export" style="margin-top: 1.25rem">
+          Exportar Excel
+        </button>
+        <h2 style="margin-top: 1.75rem; font-size: 1.1rem">Por secretaria</h2>
+        <div style="overflow-x: auto">
+          <table class="admin-table" id="table-sec">
+            <thead>
+              <tr>
+                <th>Secretaria</th>
+                <th>Total</th>
+                <th>OK</th>
+                <th>Não enc.</th>
+                <th>Outro</th>
+                <th>Pend.</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btn-admin-sair" style="margin-top: 1rem">
+          Sair
+        </button>
+      </div>
+    </main>
+    <script>
+      (function () {
+        const STORAGE_KEY = 'admin_pwd_inv';
+
+        const $ = (id) => document.getElementById(id);
+        const showErr = (el, msg) => {
+          el.textContent = msg || '';
+          el.classList.toggle('show', !!msg);
+        };
+
+        function showLogin() {
+          $('admin-login').classList.add('active');
+          $('admin-dash').classList.remove('active');
+          localStorage.removeItem(STORAGE_KEY);
+        }
+
+        function showDash() {
+          $('admin-login').classList.remove('active');
+          $('admin-dash').classList.add('active');
+        }
+
+        async function loadRelatorio(pwd) {
+          const r = await fetch('/api/relatorio', {
+            headers: { 'X-Admin-Password': pwd },
+          });
+          if (!r.ok) throw new Error('Falha ao carregar');
+          return r.json();
+        }
+
+        function renderDash(data) {
+          const t = data.totais;
+          $('stat-grid').innerHTML =
+            '<div class="stat-box"><strong>' +
+            t.computadores +
+            '</strong><span>Total computadores</span></div>' +
+            '<div class="stat-box"><strong>' +
+            t.confirmados +
+            '</strong><span>Confirmados</span></div>' +
+            '<div class="stat-box"><strong>' +
+            t.nao_encontrados +
+            '</strong><span>Não encontrados</span></div>' +
+            '<div class="stat-box"><strong>' +
+            t.outro_local +
+            '</strong><span>Outro local</span></div>' +
+            '<div class="stat-box"><strong>' +
+            t.pendentes +
+            '</strong><span>Pendentes</span></div>';
+          $('dash-updated').textContent =
+            'Atualizado em ' + new Date().toLocaleString('pt-BR');
+
+          const tb = $('table-sec').querySelector('tbody');
+          tb.innerHTML = '';
+          data.porSecretaria.forEach((s) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              '<td>' +
+              escapeHtml(s.nome) +
+              '</td><td>' +
+              s.total_pc +
+              '</td><td>' +
+              s.confirmados +
+              '</td><td>' +
+              s.nao_encontrados +
+              '</td><td>' +
+              s.outro_local +
+              '</td><td>' +
+              s.pendentes +
+              '</td>';
+            tb.appendChild(tr);
+          });
+        }
+
+        function escapeHtml(s) {
+          const d = document.createElement('div');
+          d.textContent = s;
+          return d.innerHTML;
+        }
+
+        $('btn-admin-go').onclick = async () => {
+          const pwd = $('admin-senha').value;
+          showErr($('admin-err'), '');
+          if (!pwd) return showErr($('admin-err'), 'Informe a senha.');
+          try {
+            const data = await loadRelatorio(pwd);
+            if (!data.ok) throw new Error('Resposta inválida');
+            localStorage.setItem(STORAGE_KEY, pwd);
+            renderDash(data);
+            showDash();
+          } catch {
+            showErr($('admin-err'), 'Senha inválida ou erro de rede.');
+          }
+        };
+
+        $('btn-export').onclick = async () => {
+          const pwd = localStorage.getItem(STORAGE_KEY);
+          if (!pwd) return showLogin();
+          const r = await fetch('/api/export?adminSenha=' + encodeURIComponent(pwd));
+          if (!r.ok) {
+            alert('Falha na exportação');
+            return;
+          }
+          const blob = await r.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'inventario-auditado.xlsx';
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+
+        $('btn-admin-sair').onclick = showLogin;
+
+        (async function init() {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            try {
+              const data = await loadRelatorio(saved);
+              if (data.ok) {
+                renderDash(data);
+                showDash();
+                return;
+              }
+            } catch (_) {}
+          }
+          showLogin();
+        })();
+      })();
+    </script>
+  </body>
+</html>
