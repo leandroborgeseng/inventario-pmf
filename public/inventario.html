@@ -27,25 +27,116 @@
       </div>
 
       <div id="screen-list" class="screen">
+        <div class="inv-help-banner card">
+          <strong>Nome da máquina</strong> é obrigatório ao confirmar um equipamento.
+          <a
+            href="/ajuda-nome-computador.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inv-help-link"
+            >Como descobrir o nome do computador (guia da TI — abre em nova aba)</a
+          >
+        </div>
         <div class="topbar">
           <button type="button" class="btn btn-ghost" id="btn-sair">Sair</button>
         </div>
-        <h1 id="titulo-secretaria">Computadores</h1>
-        <p class="sub">Confirme cada equipamento. Os dados são salvos automaticamente.</p>
+        <h1 id="titulo-secretaria">Vistoria</h1>
+        <p class="sub">
+          Separe o que falta fazer do que já foi registrado. Use a busca para achar por nome ou patrimônio.
+        </p>
+
+        <div class="inv-tabs" id="inv-tabs">
+          <button type="button" class="inv-tab active" data-tab="pendente">
+            A vistoriar <span class="inv-count" id="cnt-pend">0</span>
+          </button>
+          <button type="button" class="inv-tab" data-tab="feitos">
+            Já inventariados <span class="inv-count" id="cnt-feitos">0</span>
+          </button>
+        </div>
+
+        <div class="card">
+          <label class="field" for="inv-busca">Buscar (nome, patrimônio ou local)</label>
+          <input
+            id="inv-busca"
+            type="search"
+            class="field-sm"
+            placeholder="Digite para filtrar…"
+            autocomplete="off"
+            list="inv-datalist"
+          />
+          <datalist id="inv-datalist"></datalist>
+        </div>
+
         <div id="lista-computadores"></div>
         <div class="err" id="list-err"></div>
+      </div>
+
+      <div id="screen-detail" class="screen">
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-voltar-detail">Voltar à lista</button>
+        </div>
+        <div class="inv-help-banner card inv-help-compact">
+          <a
+            href="/ajuda-nome-computador.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Abrir guia: como ver o nome do computador</a
+          >
+        </div>
+        <h1>Vistoriar equipamento</h1>
+        <p class="sub" id="detail-resumo"></p>
+        <div class="card">
+          <label class="field" for="detail-nome"
+            >Nome da máquina <span class="req">*</span></label
+          >
+          <input
+            id="detail-nome"
+            type="text"
+            class="field-sm"
+            placeholder="Ex.: PC-SALA-01 ou conforme aparece no Windows"
+            autocomplete="off"
+            required
+          />
+          <p class="muted" style="margin: 0.5rem 0 0; font-size: 0.88rem">
+            Obrigatório. O nome deve bater com o que aparece no computador físico.
+          </p>
+          <div class="btn-row side" style="margin-top: 1rem">
+            <button type="button" class="btn btn-success" id="detail-confirm">
+              Confirmar e escolher monitores
+            </button>
+          </div>
+          <div class="btn-row side">
+            <button type="button" class="btn btn-danger" id="detail-nao">
+              Não encontrado
+            </button>
+            <button type="button" class="btn btn-warn" id="detail-outro">
+              Outro local
+            </button>
+          </div>
+          <div class="err" id="detail-err"></div>
+        </div>
       </div>
 
       <div id="screen-monitors" class="screen">
         <div class="topbar">
           <button type="button" class="btn btn-ghost" id="btn-voltar-mon">Voltar</button>
         </div>
-        <h1>Monitores conectados</h1>
+        <h1>Monitores neste computador</h1>
         <p class="sub" id="mon-pc-label"></p>
+        <p class="muted" style="margin-bottom: 0.75rem">
+          Selecione no máximo <strong>dois</strong> monitores ligados a este equipamento (ou deixe em branco se não houver).
+        </p>
         <div class="card">
-          <ul class="check-list" id="lista-monitores"></ul>
-          <button type="button" class="btn btn-success" id="btn-salvar-mon">
-            Salvar auditoria
+          <label class="field" for="mon-sel-1">Monitor 1</label>
+          <select id="mon-sel-1" class="field-sm">
+            <option value="">— Nenhum —</option>
+          </select>
+          <label class="field" for="mon-sel-2" style="margin-top: 0.75rem">Monitor 2</label>
+          <select id="mon-sel-2" class="field-sm">
+            <option value="">— Nenhum —</option>
+          </select>
+          <button type="button" class="btn btn-success" id="btn-salvar-mon" style="margin-top: 1rem">
+            Salvar e voltar à lista
           </button>
           <div class="err" id="mon-err"></div>
         </div>

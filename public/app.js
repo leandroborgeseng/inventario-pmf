@@ -15,6 +15,7 @@
 
   function showErr(elId, msg) {
     const el = $(elId);
+    if (!el) return;
     el.textContent = msg || '';
     el.classList.toggle('show', !!msg);
   }
@@ -46,7 +47,18 @@
     return j;
   }
 
-  async function apiMonitores(computadorId) {
+  async function apiMonitoresLista() {
+    const { token, senha } = getAuth();
+    const r = await fetch(
+      '/api/monitores/' + encodeURIComponent(token) + '?lista=1',
+      { headers: { 'X-Senha': senha } }
+    );
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erro ao carregar monitores');
+    return j;
+  }
+
+  async function apiMonitoresComputador(computadorId) {
     const { token, senha } = getAuth();
     const r = await fetch(
       '/api/monitores/' +
@@ -60,7 +72,7 @@
     return j;
   }
 
-  async function apiAuditoriaMonitores(auditoriaId, monitores) {
+  async function apiAuditoriaMonitoresPorIds(auditoriaId, monitorIds) {
     const { token, senha } = getAuth();
     const r = await fetch('/api/auditoria-monitores', {
       method: 'POST',
@@ -69,7 +81,7 @@
         token,
         senha,
         auditoria_id: auditoriaId,
-        monitores,
+        monitor_ids: monitorIds,
       }),
     });
     const j = await r.json();
@@ -88,15 +100,18 @@
   }
 
   function badgeHtml(audit) {
-    if (!audit)
-      return '<span class="badge pending">Pendente</span>';
+    if (!audit) return '<span class="badge pending">Pendente</span>';
     if (audit.confirmado === 'confirmado')
       return '<span class="badge ok">Confirmado</span>';
     if (audit.confirmado === 'nao_encontrado')
       return '<span class="badge no">Não encontrado</span>';
     if (audit.confirmado === 'outro_local')
       return '<span class="badge move">Outro local</span>';
-    return '<span class="badge pending">' + escapeHtml(audit.confirmado) + '</span>';
+    return (
+      '<span class="badge pending">' +
+      escapeHtml(audit.confirmado) +
+      '</span>'
+    );
   }
 
   function escapeHtml(s) {
@@ -106,16 +121,93 @@
   }
 
   let computadoresCache = [];
+  let secretariaNome = '';
+  let currentTab = 'pendente';
+  let buscaTimer = null;
+  let monitorOptsCache = [];
+  let detailPc = null;
 
-  function renderLista(data) {
-    $('titulo-secretaria').textContent = data.secretaria.nome;
+  function norm(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '');
+  }
+
+  function matchesBusca(c, qRaw) {
+    const q = norm(qRaw.trim());
+    if (!q) return true;
+    return [c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad]
+      .map((x) => norm(x))
+      .some((t) => t.includes(q));
+  }
+
+  function isPendente(c) {
+    return !c.auditoria;
+  }
+
+  function isFeito(c) {
+    return !!c.auditoria;
+  }
+
+  function updateTabCounts() {
+    const pend = computadoresCache.filter(isPendente).length;
+    const feitos = computadoresCache.filter(isFeito).length;
+    $('cnt-pend').textContent = String(pend);
+    $('cnt-feitos').textContent = String(feitos);
+  }
+
+  function updateDatalist() {
+    const dl = $('inv-datalist');
+    if (!dl) return;
+    dl.innerHTML = '';
+    const q = norm($('inv-busca').value);
+    const pool = computadoresCache.filter(
+      (c) => isPendente(c) && (q ? matchesBusca(c, $('inv-busca').value) : true)
+    );
+    const seen = new Set();
+    let n = 0;
+    for (const c of pool) {
+      const pat = String(c.patrimonio || '').trim();
+      const nom = String(c.nome_maquina || '').trim();
+      const line =
+        (pat ? 'Pat. ' + pat : '') + (pat && nom ? ' — ' : '') + (nom || '(sem nome)');
+      if (!line.trim()) continue;
+      if (seen.has(line)) continue;
+      seen.add(line);
+      const opt = document.createElement('option');
+      opt.value = line;
+      dl.appendChild(opt);
+      if (++n >= 50) break;
+    }
+  }
+
+  function renderLista() {
+    $('titulo-secretaria').textContent = secretariaNome || 'Vistoria';
     const root = $('lista-computadores');
     root.innerHTML = '';
-    computadoresCache = data.computadores;
-    data.computadores.forEach((c) => {
+
+    const q = $('inv-busca') ? $('inv-busca').value : '';
+    const list = computadoresCache.filter((c) => {
+      if (currentTab === 'pendente' && !isPendente(c)) return false;
+      if (currentTab === 'feitos' && !isFeito(c)) return false;
+      return matchesBusca(c, q);
+    });
+
+    if (list.length === 0) {
+      root.innerHTML =
+        '<p class="muted">Nenhum equipamento nesta lista com os filtros atuais.</p>';
+      return;
+    }
+
+    list.forEach((c) => {
       const div = document.createElement('div');
       div.className = 'card';
       div.dataset.pcId = String(c.id);
+
+      const audit = c.auditoria;
+      const quick = !audit;
+
       div.innerHTML =
         '<p class="card-title">' +
         escapeHtml(c.nome_maquina || '(sem nome)') +
@@ -126,115 +218,215 @@
         '<p class="meta">Local: ' +
         escapeHtml(c.localizacao || '—') +
         '</p>' +
-        (c.status_ad
-          ? '<p class="meta">AD: ' + escapeHtml(c.status_ad) + '</p>'
-          : '') +
-        badgeHtml(c.auditoria) +
-        '<div class="btn-row side">' +
-        '<button type="button" class="btn btn-success" data-act="confirmado">Confirmar</button>' +
-        '<button type="button" class="btn btn-danger" data-act="nao_encontrado">Não encontrado</button>' +
-        '</div>' +
-        '<div class="btn-row">' +
-        '<button type="button" class="btn btn-warn" data-act="outro_local">Outro local</button>' +
-        (c.auditoria && c.auditoria.confirmado === 'confirmado'
-          ? '<button type="button" class="btn btn-ghost" data-act="monitores">Monitores…</button>'
-          : '') +
-        '</div>';
+        (c.status_ad ? '<p class="meta">AD: ' + escapeHtml(c.status_ad) + '</p>' : '') +
+        badgeHtml(audit) +
+        (quick
+          ? '<div class="pc-actions-mini">' +
+            '<button type="button" class="btn btn-primary btn-inline" data-act="abrir">Vistoriar</button>' +
+            '<button type="button" class="btn btn-ghost btn-inline" data-act="nao_encontrado">Não encontrado</button>' +
+            '<button type="button" class="btn btn-ghost btn-inline" data-act="outro_local">Outro local</button>' +
+            '</div>'
+          : '<div class="pc-actions-mini">' +
+            (audit.confirmado === 'confirmado'
+              ? '<button type="button" class="btn btn-success btn-inline" data-act="monitores">Ajustar monitores</button>'
+              : '<button type="button" class="btn btn-ghost btn-inline" data-act="ver-resumo">Ver registro</button>') +
+            '</div>');
 
       div.querySelectorAll('[data-act]').forEach((btn) => {
-        btn.addEventListener('click', () =>
-          onPcAction(c, btn.getAttribute('data-act'))
-        );
+        btn.addEventListener('click', () => {
+          const act = btn.getAttribute('data-act');
+          if (act === 'abrir') openDetail(c);
+          else if (act === 'monitores') openMonitoresFlow(c);
+          else if (act === 'ver-resumo') verResumoAuditoria(c);
+          else onQuickAction(c, act);
+        });
       });
       root.appendChild(div);
     });
   }
 
-  let monitorCtx = { computadorId: null, auditoriaId: null, label: '' };
+  function openDetail(c) {
+    detailPc = c;
+    showErr('detail-err', '');
+    const pat = c.patrimonio || '—';
+    const loc = c.localizacao || '—';
+    $('detail-resumo').innerHTML =
+      'Patrimônio <strong>' +
+      escapeHtml(pat) +
+      '</strong> · Local: ' +
+      escapeHtml(loc);
 
-  async function onPcAction(c, act) {
+    $('detail-nome').value = c.nome_maquina || '';
+    $('detail-nome').readOnly = false;
+
+    $('detail-confirm').style.display = 'inline-flex';
+    $('detail-nao').style.display = 'inline-flex';
+    $('detail-outro').style.display = 'inline-flex';
+
+    showScreen('screen-detail');
+  }
+
+  function verResumoAuditoria(c) {
+    const a = c.auditoria;
+    if (!a) return;
+    let t = 'Status: ' + a.confirmado;
+    if (a.observacao) t += '\nObservação: ' + a.observacao;
+    if (a.data) t += '\nData: ' + a.data;
+    window.alert(t);
+  }
+
+  async function onQuickAction(c, act) {
     showErr('list-err', '');
     const { token, senha } = getAuth();
-    if (act === 'monitores') {
-      await openMonitores(c);
-      return;
-    }
     let observacao = null;
-    if (act === 'outro_local') {
+    if (act === 'outro_local')
       observacao = window.prompt('Observação (opcional):', '') || null;
+    if (act === 'nao_encontrado' || act === 'outro_local') {
+      if (!window.confirm('Registrar este equipamento como ' + (act === 'nao_encontrado' ? 'não encontrado' : 'em outro local') + '?')) return;
     }
     try {
-      const res = await apiAuditoria({
+      await apiAuditoria({
         token,
         senha,
         computador_id: c.id,
         confirmado: act,
         observacao,
       });
-      c.auditoria = {
-        id: res.auditoria_id,
-        confirmado: act,
-        observacao,
-        data: new Date().toISOString(),
-      };
-      if (act === 'confirmado') {
-        await openMonitores({ ...c, auditoria: c.auditoria });
-      } else {
-        const data = await loadComputadores();
-        renderLista(data);
-      }
+      await refreshData();
     } catch (e) {
       showErr('list-err', e.message);
     }
   }
 
-  async function openMonitores(c) {
+  $('detail-confirm').onclick = async () => {
+    showErr('detail-err', '');
+    const nome = ($('detail-nome').value || '').trim();
+    if (!nome) {
+      showErr('detail-err', 'Informe o nome da máquina.');
+      return;
+    }
+    const { token, senha } = getAuth();
+    const c = detailPc;
+    if (!c) return;
+    try {
+      const res = await apiAuditoria({
+        token,
+        senha,
+        computador_id: c.id,
+        confirmado: 'confirmado',
+        nome_maquina: nome,
+      });
+      c.nome_maquina = nome;
+      c.auditoria = {
+        id: res.auditoria_id,
+        confirmado: 'confirmado',
+        data: new Date().toISOString(),
+      };
+      await openMonitoresFlow({ ...c, auditoria: c.auditoria });
+    } catch (e) {
+      showErr('detail-err', e.message);
+    }
+  };
+
+  $('detail-nao').onclick = async () => {
+    if (!detailPc) return;
+    if (!window.confirm('Confirmar que o equipamento não foi encontrado?')) return;
+    showErr('detail-err', '');
+    try {
+      const a = getAuth();
+      await apiAuditoria({
+        token: a.token,
+        senha: a.senha,
+        computador_id: detailPc.id,
+        confirmado: 'nao_encontrado',
+      });
+      await refreshData();
+      showScreen('screen-list');
+    } catch (e) {
+      showErr('detail-err', e.message);
+    }
+  };
+
+  $('detail-outro').onclick = async () => {
+    if (!detailPc) return;
+    const observacao = window.prompt('Observação (opcional):', '') || null;
+    if (!window.confirm('Registrar como em outro local?')) return;
+    showErr('detail-err', '');
+    try {
+      const a = getAuth();
+      await apiAuditoria({
+        token: a.token,
+        senha: a.senha,
+        computador_id: detailPc.id,
+        confirmado: 'outro_local',
+        observacao,
+      });
+      await refreshData();
+      showScreen('screen-list');
+    } catch (e) {
+      showErr('detail-err', e.message);
+    }
+  };
+
+  $('btn-voltar-detail').onclick = () => {
+    showScreen('screen-list');
+    detailPc = null;
+  };
+
+  function fillMonitorSelects(preselect) {
+    const s1 = $('mon-sel-1');
+    const s2 = $('mon-sel-2');
+    const pres = preselect || [null, null];
+    s1.innerHTML = '<option value="">— Nenhum —</option>';
+    s2.innerHTML = '<option value="">— Nenhum —</option>';
+    monitorOptsCache.forEach((m) => {
+      const t =
+        (m.patrimonio || m.id) + (m.modelo ? ' — ' + m.modelo : '');
+      [s1, s2].forEach((sel) => {
+        const o = document.createElement('option');
+        o.value = String(m.id);
+        o.textContent = t;
+        sel.appendChild(o);
+      });
+    });
+    s1.value = pres[0] != null ? String(pres[0]) : '';
+    s2.value = pres[1] != null ? String(pres[1]) : '';
+    if (s1.value && s1.value === s2.value) s2.value = '';
+  }
+
+  let monitorCtx = { computadorId: null, auditoriaId: null, label: '' };
+
+  async function openMonitoresFlow(c) {
     showErr('mon-err', '');
     const aid = c.auditoria && c.auditoria.id;
     if (!aid) {
-      showErr('list-err', 'Salve o computador como confirmado antes.');
+      showErr('list-err', 'Confirme o equipamento com o nome da máquina antes dos monitores.');
       return;
     }
     monitorCtx = {
       computadorId: c.id,
       auditoriaId: aid,
       label:
-        (c.nome_maquina || '') +
-        ' · Pat. ' +
-        (c.patrimonio || '—'),
+        (c.nome_maquina || '') + ' · Pat. ' + (c.patrimonio || '—'),
     };
     $('mon-pc-label').textContent = monitorCtx.label;
+
     try {
-      const data = await apiMonitores(c.id);
+      if (!monitorOptsCache.length) {
+        const L = await apiMonitoresLista();
+        monitorOptsCache = L.monitores || [];
+      }
+
+      const data = await apiMonitoresComputador(c.id);
       monitorCtx.auditoriaId = data.auditoria_id || aid;
-      const ul = $('lista-monitores');
-      ul.innerHTML = '';
-      if (!data.monitores || data.monitores.length === 0) {
-        const li = document.createElement('li');
-        li.className = 'check-item muted';
-        li.textContent = 'Nenhum monitor cadastrado para esta secretaria.';
-        ul.appendChild(li);
-      } else {
-        data.monitores.forEach((m) => {
-          const li = document.createElement('li');
-          li.className = 'check-item';
-          const id = 'mon-' + m.id;
-          li.innerHTML =
-            '<input type="checkbox" id="' +
-            id +
-            '" data-mid="' +
-            m.id +
-            '"' +
-            (m.confirmado ? ' checked' : '') +
-            ' />' +
-            '<label for="' +
-            id +
-            '">Monitor patrimônio ' +
-            escapeHtml(m.patrimonio || m.id) +
-            (m.modelo ? ' — ' + escapeHtml(m.modelo) : '') +
-            '</label>';
-          ul.appendChild(li);
-        });
+      const ativos = (data.monitores || [])
+        .filter((m) => m.confirmado)
+        .map((m) => m.id)
+        .slice(0, 2);
+      fillMonitorSelects([ativos[0] || null, ativos[1] || null]);
+
+      if (!(data.monitores && data.monitores.length) && !monitorOptsCache.length) {
+        showErr('mon-err', 'Nenhum monitor cadastrado para esta secretaria.');
       }
       showScreen('screen-monitors');
     } catch (e) {
@@ -244,18 +436,14 @@
 
   $('btn-salvar-mon').onclick = async () => {
     showErr('mon-err', '');
-    const items = $('lista-monitores').querySelectorAll('input[type=checkbox][data-mid]');
-    const monitores = [];
-    items.forEach((inp) => {
-      monitores.push({
-        monitor_id: parseInt(inp.getAttribute('data-mid'), 10),
-        confirmado: inp.checked,
-      });
-    });
+    const id1 = parseInt($('mon-sel-1').value, 10);
+    const id2 = parseInt($('mon-sel-2').value, 10);
+    const ids = [];
+    if (!Number.isNaN(id1) && id1 > 0) ids.push(id1);
+    if (!Number.isNaN(id2) && id2 > 0 && id2 !== id1) ids.push(id2);
     try {
-      await apiAuditoriaMonitores(monitorCtx.auditoriaId, monitores);
-      const data = await loadComputadores();
-      renderLista(data);
+      await apiAuditoriaMonitoresPorIds(monitorCtx.auditoriaId, ids);
+      await refreshData();
       showScreen('screen-list');
     } catch (e) {
       showErr('mon-err', e.message);
@@ -264,17 +452,47 @@
 
   $('btn-voltar-mon').onclick = async () => {
     try {
-      const data = await loadComputadores();
-      renderLista(data);
+      await refreshData();
     } catch (_) {}
     showScreen('screen-list');
   };
 
+  async function refreshData() {
+    const data = await loadComputadores();
+    secretariaNome = data.secretaria && data.secretaria.nome;
+    computadoresCache = data.computadores;
+    updateTabCounts();
+    updateDatalist();
+    renderLista();
+  }
+
+  document.querySelectorAll('.inv-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.inv-tab').forEach((b) => {
+        b.classList.remove('active');
+      });
+      btn.classList.add('active');
+      currentTab = btn.getAttribute('data-tab');
+      renderLista();
+    });
+  });
+
+  const buscaEl = $('inv-busca');
+  if (buscaEl) {
+    buscaEl.addEventListener('input', () => {
+      clearTimeout(buscaTimer);
+      buscaTimer = setTimeout(() => {
+        updateDatalist();
+        renderLista();
+      }, 180);
+    });
+  }
+
   async function afterLogin() {
     showErr('list-err', '');
+    monitorOptsCache = [];
     try {
-      const data = await loadComputadores();
-      renderLista(data);
+      await refreshData();
       showScreen('screen-list');
     } catch (e) {
       clearAuth();
@@ -312,6 +530,7 @@
   $('btn-sair').onclick = () => {
     clearAuth();
     $('senha').value = '';
+    detailPc = null;
     showScreen('screen-login');
   };
 

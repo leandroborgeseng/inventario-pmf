@@ -195,22 +195,12 @@ app.get('/api/computadores/:token', async (req, res) => {
   }
 });
 
-/** GET /api/monitores/:token — header X-Senha, query computador_id */
+/** GET /api/monitores/:token — X-Senha. Query lista=1 lista só equipamentos; senão computador_id obrigatório */
 app.get('/api/monitores/:token', async (req, res) => {
   try {
     const senha = req.headers['x-senha'] || req.query.senha;
     const s = await validateSecretariaAccess(req.params.token, senha);
     if (!s) return res.status(401).json({ error: 'Não autorizado' });
-
-    const computadorId = parseInt(req.query.computador_id, 10);
-    if (!computadorId)
-      return res.status(400).json({ error: 'computador_id obrigatório' });
-
-    const pc = await dbGet(
-      'SELECT id FROM computadores WHERE id = ? AND secretaria_id = ?',
-      [computadorId, s.id]
-    );
-    if (!pc) return res.status(404).json({ error: 'Computador não encontrado' });
 
     const monitores = await dbAll(
       `SELECT m.id, m.patrimonio, m.modelo
@@ -219,6 +209,31 @@ app.get('/api/monitores/:token', async (req, res) => {
        ORDER BY m.patrimonio COLLATE NOCASE`,
       [s.id]
     );
+
+    const lista = req.query.lista === '1' || req.query.lista === 'true';
+    if (lista) {
+      return res.json({
+        ok: true,
+        monitores: monitores.map((m) => ({
+          id: m.id,
+          patrimonio: m.patrimonio,
+          modelo: m.modelo,
+          label:
+            (m.patrimonio || '') +
+            (m.modelo ? ' — ' + m.modelo : ''),
+        })),
+      });
+    }
+
+    const computadorId = parseInt(req.query.computador_id, 10);
+    if (!computadorId)
+      return res.status(400).json({ error: 'computador_id ou lista=1 obrigatório' });
+
+    const pc = await dbGet(
+      'SELECT id FROM computadores WHERE id = ? AND secretaria_id = ?',
+      [computadorId, s.id]
+    );
+    if (!pc) return res.status(404).json({ error: 'Computador não encontrado' });
 
     const aud = await dbGet(
       'SELECT id FROM auditoria WHERE computador_id = ?',
@@ -252,10 +267,17 @@ app.get('/api/monitores/:token', async (req, res) => {
   }
 });
 
-/** POST /api/auditoria — body: token, senha, computador_id, confirmado, observacao? */
+/** POST /api/auditoria — body: ..., nome_maquina obrigatório se confirmado=confirmado */
 app.post('/api/auditoria', async (req, res) => {
   try {
-    const { token, senha, computador_id, confirmado, observacao } = req.body || {};
+    const {
+      token,
+      senha,
+      computador_id,
+      confirmado,
+      observacao,
+      nome_maquina,
+    } = req.body || {};
     const s = await validateSecretariaAccess(token, senha);
     if (!s) return res.status(401).json({ ok: false, error: 'Não autorizado' });
 
@@ -269,6 +291,19 @@ app.post('/api/auditoria', async (req, res) => {
     );
     if (!pc)
       return res.status(404).json({ ok: false, error: 'Computador não encontrado' });
+
+    if (confirmado === 'confirmado') {
+      const nm = String(nome_maquina || '').trim();
+      if (!nm)
+        return res.status(400).json({
+          ok: false,
+          error: 'Nome da máquina é obrigatório para confirmar o equipamento.',
+        });
+      await dbRun('UPDATE computadores SET nome_maquina = ? WHERE id = ?', [
+        nm,
+        computador_id,
+      ]);
+    }
 
     const now = new Date().toISOString();
 
@@ -311,10 +346,15 @@ app.post('/api/auditoria', async (req, res) => {
   }
 });
 
-/** POST /api/auditoria-monitores — body: token, senha, auditoria_id, monitores: [{monitor_id, confirmado}] */
+/**
+ * POST /api/auditoria-monitores
+ * - monitores: [{ monitor_id, confirmado }] (lista completa), ou
+ * - monitor_ids: [id1, id2] até 2 ids marcados como ligados a este PC
+ */
 app.post('/api/auditoria-monitores', async (req, res) => {
   try {
-    const { token, senha, auditoria_id, monitores: mons } = req.body || {};
+    const { token, senha, auditoria_id, monitores: monsIn, monitor_ids } =
+      req.body || {};
     const s = await validateSecretariaAccess(token, senha);
     if (!s) return res.status(401).json({ ok: false, error: 'Não autorizado' });
 
@@ -328,8 +368,35 @@ app.post('/api/auditoria-monitores', async (req, res) => {
     if (!aud || aud.secretaria_id !== s.id)
       return res.status(404).json({ ok: false, error: 'Auditoria inválida' });
 
+    let mons = monsIn;
+    if (Array.isArray(monitor_ids)) {
+      const raw = [
+        ...new Set(
+          monitor_ids
+            .map((x) => parseInt(x, 10))
+            .filter((n) => !Number.isNaN(n) && n > 0)
+        ),
+      ];
+      if (raw.length > 2)
+        return res.status(400).json({
+          ok: false,
+          error: 'Selecione no máximo 2 monitores para este computador.',
+        });
+      const allMon = await dbAll(
+        'SELECT id FROM monitores WHERE secretaria_id = ?',
+        [s.id]
+      );
+      mons = allMon.map((row) => ({
+        monitor_id: row.id,
+        confirmado: raw.includes(row.id),
+      }));
+    }
+
     if (!Array.isArray(mons))
-      return res.status(400).json({ ok: false, error: 'monitores inválido' });
+      return res.status(400).json({
+        ok: false,
+        error: 'Envie monitores ou monitor_ids (até 2)',
+      });
 
     for (const m of mons) {
       const mon = await dbGet(

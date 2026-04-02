@@ -419,3 +419,79 @@ select.field-sm {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.inv-help-banner {
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.inv-help-banner strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.inv-help-link {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-weight: 600;
+}
+
+.inv-help-compact {
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.inv-help-compact a {
+  font-weight: 600;
+}
+
+.inv-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.inv-tab {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+}
+
+.inv-tab.active {
+  border-color: var(--accent);
+  background: rgba(61, 156, 245, 0.15);
+}
+
+.inv-count {
+  display: inline-block;
+  margin-left: 0.25rem;
+  opacity: 0.85;
+  font-weight: 700;
+}
+
+.req {
+  color: var(--danger);
+}
+
+.pc-actions-mini {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.btn-inline {
+  width: auto;
+  min-height: 42px;
+  margin-top: 0;
+  font-size: 0.9rem;
+  padding: 0 0.75rem;
+}
