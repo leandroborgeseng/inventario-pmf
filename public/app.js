@@ -281,6 +281,37 @@
     return j;
   }
 
+  async function apiInventarioMonitorNaoEncontrado(monitorId, cancelar) {
+    const { token, senha } = getAuth();
+    const r = await fetch('/api/inventario-monitor-nao-encontrado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        senha,
+        monitor_id: monitorId,
+        cancelar: !!cancelar,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erro ao registar');
+    if (!j.ok) throw new Error(j.error || 'Erro ao registar');
+    return j;
+  }
+
+  async function apiInventarioMonitorNaoEncontradoLote(monitorIds) {
+    const { token, senha } = getAuth();
+    const r = await fetch('/api/inventario-monitor-nao-encontrado-lote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, senha, monitor_ids: monitorIds }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erro ao registar lote');
+    if (!j.ok) throw new Error(j.error || 'Erro ao registar lote');
+    return j;
+  }
+
   function badgeMonVistoria(vistoriaPc) {
     if (vistoriaPc === 'confirmado')
       return '<span class="badge ok">Computador vistoriado (confirmado)</span>';
@@ -321,7 +352,7 @@
     if (hint) {
       if (!locSel) {
         hint.textContent =
-          '«Não ligado»: ainda não foi escolhido na vistoria de nenhum computador. «Ligado»: associado ao gravar monitores após confirmar um PC.';
+          '«Não ligado»: ainda não foi escolhido na vistoria de nenhum computador. «Ligado»: associado ao gravar monitores após confirmar um PC. Use «Não encontrado» quando o equipamento não existir no local.';
       } else {
         hint.textContent =
           'Filtro «' +
@@ -334,14 +365,19 @@
     let nLigConfirm = 0;
     let nLigOutro = 0;
     let nLigNao = 0;
+    let nDeclaradosNao = 0;
     for (const it of items) {
+      if (it.inventario_nao_encontrado) {
+        nDeclaradosNao++;
+        continue;
+      }
       if (!it.vinculo) nSem++;
       else if (it.vinculo.vistoria_pc === 'confirmado') nLigConfirm++;
       else if (it.vinculo.vistoria_pc === 'outro_local') nLigOutro++;
       else if (it.vinculo.vistoria_pc === 'nao_encontrado') nLigNao++;
     }
     if (resumo) {
-      resumo.innerHTML =
+      let inner =
         '<div class="inv-mon-resumo-inner">' +
         '<span><strong>' +
         nSem +
@@ -349,7 +385,15 @@
         nLigConfirm +
         '</strong> ligados · vistoria OK</span> · <span class="warn-num"><strong>' +
         (nLigOutro + nLigNao) +
-        '</strong> ligados · PC outro local / não encontrado</span></div>';
+        '</strong> ligados · PC outro local / não encontrado</span>';
+      if (nDeclaradosNao > 0) {
+        inner +=
+          ' · <span><strong>' +
+          nDeclaradosNao +
+          '</strong> declarados não encontrados</span>';
+      }
+      inner += '</div>';
+      resumo.innerHTML = inner;
     }
 
     if (lista) {
@@ -357,6 +401,7 @@
       if (!items.length) {
         lista.innerHTML =
           '<p class="muted">Nenhum monitor com os filtros atuais (local ou texto de busca). Ajuste ou limpe os filtros.</p>';
+        updateMonBatchUi();
         return;
       }
       for (const it of items) {
@@ -365,8 +410,26 @@
         const pat = escapeHtml(it.patrimonio || '—');
         const mod = it.modelo ? escapeHtml(it.modelo) : '';
         const v = it.vinculo;
+        const selRow =
+          !it.inventario_nao_encontrado
+            ? '<div class="inv-card-select"><label><input type="checkbox" class="inv-mon-check" data-monitor-id="' +
+              it.id +
+              '" data-mon-vinculo="' +
+              (v ? '1' : '0') +
+              '" /> Incluir no lote</label></div>'
+            : '';
+        const locMon = it.localizacao
+          ? '<p class="meta">Local (monitor): <strong>' +
+            escapeHtml(String(it.localizacao)) +
+            '</strong></p>'
+          : '';
         let corpo = '';
-        if (!v) {
+        if (it.inventario_nao_encontrado) {
+          corpo =
+            '<p class="meta">Inventário físico</p>' +
+            '<span class="badge no">Não encontrado na vistoria</span>' +
+            '<p class="muted inv-mon-explica">Registado como não localizado no inventário (cadastro mantido).</p>';
+        } else if (!v) {
           corpo =
             '<p class="meta">Ligação à vistoria</p>' +
             '<span class="badge pending">Não ligado a computador</span>' +
@@ -388,27 +451,102 @@
             '<p class="meta">Estado da vistoria do PC</p>' +
             badgeMonVistoria(v.vistoria_pc);
         }
-        const locMon = it.localizacao
-          ? '<p class="meta">Local (monitor): <strong>' +
-            escapeHtml(String(it.localizacao)) +
-            '</strong></p>'
-          : '';
         div.innerHTML =
+          selRow +
           '<p class="card-title">' +
           pat +
           (mod ? ' · ' + mod : '') +
           '</p>' +
           locMon +
           corpo;
+
+        const actions = document.createElement('div');
+        actions.className = 'pc-actions-mini';
+        const mid = it.id;
+        if (it.inventario_nao_encontrado) {
+          const btnAnul = document.createElement('button');
+          btnAnul.type = 'button';
+          btnAnul.className = 'btn btn-ghost btn-inline';
+          btnAnul.textContent = 'Anular «não encontrado»';
+          btnAnul.addEventListener('click', async () => {
+            if (
+              !window.confirm(
+                'Anular o registo «não encontrado»? Poderá voltar a associar este monitor a um PC na vistoria.'
+              )
+            )
+              return;
+            showErr('mon-painel-err', '');
+            try {
+              await apiInventarioMonitorNaoEncontrado(mid, true);
+              await refreshData();
+              const data = await apiMonitoresPainel();
+              renderMonitoresPainel(data);
+            } catch (e) {
+              showErr('mon-painel-err', e.message);
+            }
+          });
+          actions.appendChild(btnAnul);
+        } else {
+          const btnNao = document.createElement('button');
+          btnNao.type = 'button';
+          btnNao.className = 'btn btn-ghost btn-inline';
+          btnNao.textContent = 'Não encontrado';
+          btnNao.addEventListener('click', async () => {
+            let msg =
+              'Registrar este monitor como não encontrado no inventário (não existe mais neste local ou não foi localizado)?';
+            if (v)
+              msg +=
+                '\n\nEste monitor está associado a um computador na vistoria. Ao confirmar, essa associação será removida.';
+            if (!window.confirm(msg)) return;
+            showErr('mon-painel-err', '');
+            try {
+              await apiInventarioMonitorNaoEncontrado(mid, false);
+              await refreshData();
+              const data = await apiMonitoresPainel();
+              renderMonitoresPainel(data);
+            } catch (e) {
+              showErr('mon-painel-err', e.message);
+            }
+          });
+          actions.appendChild(btnNao);
+        }
+        div.appendChild(actions);
         lista.appendChild(div);
       }
+      updateMonBatchUi();
+    } else {
+      updateMonBatchUi();
     }
+  }
+
+  function getSelectedMonLoteIds() {
+    return [
+      ...document.querySelectorAll('#mon-painel-lista .inv-mon-check:checked'),
+    ]
+      .map((cb) => parseInt(cb.getAttribute('data-monitor-id'), 10))
+      .filter((n) => !Number.isNaN(n) && n > 0);
+  }
+
+  function updateMonBatchUi() {
+    const wrap = $('mon-batch-wrap');
+    const cnt = $('mon-batch-count');
+    if (!wrap || !cnt) return;
+    const nBox = document.querySelectorAll('#mon-painel-lista .inv-mon-check')
+      .length;
+    wrap.hidden = nBox === 0;
+    cnt.textContent = String(
+      document.querySelectorAll('#mon-painel-lista .inv-mon-check:checked')
+        .length
+    );
   }
 
   async function openMonitoresPainel() {
     showErr('mon-painel-err', '');
     const lista = $('mon-painel-lista');
-    if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    if (lista) {
+      lista.innerHTML = '<p class="muted">A carregar…</p>';
+      updateMonBatchUi();
+    }
     copyMainToAux('mon');
     showScreen('screen-monitores-painel');
     try {
@@ -417,6 +555,7 @@
     } catch (e) {
       showErr('mon-painel-err', e.message);
       if (lista) lista.innerHTML = '';
+      updateMonBatchUi();
     }
   }
 
@@ -559,13 +698,17 @@
     if (!scr || !scr.classList.contains('active')) return;
     showErr('mon-painel-err', '');
     const lista = $('mon-painel-lista');
-    if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    if (lista) {
+      lista.innerHTML = '<p class="muted">A carregar…</p>';
+      updateMonBatchUi();
+    }
     try {
       const data = await apiMonitoresPainel();
       renderMonitoresPainel(data);
     } catch (e) {
       showErr('mon-painel-err', e.message);
       if (lista) lista.innerHTML = '';
+      updateMonBatchUi();
     }
   }
 
@@ -1330,6 +1473,75 @@
       if (e.target && e.target.classList && e.target.classList.contains('inv-pc-check'))
         updateBatchUi();
     });
+  }
+
+  const monListaRoot = $('mon-painel-lista');
+  if (monListaRoot) {
+    monListaRoot.addEventListener('change', (e) => {
+      if (
+        e.target &&
+        e.target.classList &&
+        e.target.classList.contains('inv-mon-check')
+      )
+        updateMonBatchUi();
+    });
+  }
+
+  const btnMonClear = $('btn-mon-batch-clear');
+  if (btnMonClear) {
+    btnMonClear.onclick = () => {
+      document
+        .querySelectorAll('#mon-painel-lista .inv-mon-check')
+        .forEach((cb) => {
+          cb.checked = false;
+        });
+      updateMonBatchUi();
+    };
+  }
+
+  const btnMonSelAll = $('btn-mon-batch-sel-all');
+  if (btnMonSelAll) {
+    btnMonSelAll.onclick = () => {
+      document
+        .querySelectorAll('#mon-painel-lista .inv-mon-check')
+        .forEach((cb) => {
+          cb.checked = true;
+        });
+      updateMonBatchUi();
+    };
+  }
+
+  const btnMonBatchNao = $('btn-mon-batch-nao');
+  if (btnMonBatchNao) {
+    btnMonBatchNao.onclick = async () => {
+      showErr('mon-painel-err', '');
+      const ids = getSelectedMonLoteIds();
+      if (!ids.length) {
+        showErr('mon-painel-err', 'Marque ao menos um monitor.');
+        return;
+      }
+      const anyV = [
+        ...document.querySelectorAll(
+          '#mon-painel-lista .inv-mon-check:checked'
+        ),
+      ].some((cb) => cb.getAttribute('data-mon-vinculo') === '1');
+      let msg =
+        'Registrar ' +
+        ids.length +
+        ' monitor(es) como não encontrado no inventário?';
+      if (anyV)
+        msg +=
+          '\n\nAlguns estão associados a computadores na vistoria. As associações serão removidas.';
+      if (!window.confirm(msg)) return;
+      try {
+        await apiInventarioMonitorNaoEncontradoLote(ids);
+        await refreshData();
+        const data = await apiMonitoresPainel();
+        renderMonitoresPainel(data);
+      } catch (e) {
+        showErr('mon-painel-err', e.message);
+      }
+    };
   }
 
   $('btn-batch-clear').onclick = () => {

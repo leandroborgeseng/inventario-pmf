@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -160,6 +160,7 @@ async function buildSecretariaResumoMonitores(secretariaId, monitoresTotal) {
   const semRow = await dbGet(
     `SELECT COUNT(*) AS c FROM monitores m
      WHERE m.secretaria_id = ?
+     AND COALESCE(m.inventario_nao_encontrado, 0) = 0
      AND NOT EXISTS (
        SELECT 1 FROM auditoria_monitores am
        INNER JOIN auditoria a ON a.id = am.auditoria_id
@@ -170,6 +171,21 @@ async function buildSecretariaResumoMonitores(secretariaId, monitoresTotal) {
     [secretariaId]
   );
   const sem = semRow && semRow.c != null ? Number(semRow.c) : 0;
+
+  const comRow = await dbGet(
+    `SELECT COUNT(DISTINCT m.id) AS c FROM monitores m
+     WHERE m.secretaria_id = ?
+     AND EXISTS (
+       SELECT 1 FROM auditoria_monitores am
+       INNER JOIN auditoria a ON a.id = am.auditoria_id
+       INNER JOIN computadores c ON c.id = a.computador_id
+       WHERE am.monitor_id = m.id AND am.confirmado = 1
+         AND c.secretaria_id = m.secretaria_id
+     )`,
+    [secretariaId]
+  );
+  const comVinculo =
+    comRow && comRow.c != null ? Math.max(0, Number(comRow.c)) : 0;
 
   const pcSemMonRow = await dbGet(
     `SELECT COUNT(*) AS c FROM auditoria a
@@ -185,7 +201,6 @@ async function buildSecretariaResumoMonitores(secretariaId, monitoresTotal) {
   const pcsSemMonitor =
     pcSemMonRow && pcSemMonRow.c != null ? Number(pcSemMonRow.c) : 0;
 
-  const comVinculo = Math.max(0, monitoresTotal - sem);
   const pctMon =
     monitoresTotal > 0
       ? Math.round((comVinculo / monitoresTotal) * 1000) / 10
@@ -610,7 +625,8 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
     const localFilter = hasLocal ? String(localRaw).trim() : '';
 
     const monitores = await dbAll(
-      `SELECT m.id, m.patrimonio, m.modelo, m.localizacao
+      `SELECT m.id, m.patrimonio, m.modelo, m.localizacao,
+              COALESCE(m.inventario_nao_encontrado, 0) AS inventario_nao_encontrado
        FROM monitores m
        WHERE m.secretaria_id = ?
        ORDER BY m.localizacao COLLATE NOCASE, m.patrimonio COLLATE NOCASE, m.id`,
@@ -651,6 +667,8 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
       patrimonio: m.patrimonio,
       modelo: m.modelo,
       localizacao: m.localizacao || null,
+      inventario_nao_encontrado:
+        m.inventario_nao_encontrado === 1 || m.inventario_nao_encontrado === true,
       vinculo: byMon.get(m.id) || null,
     }));
 
@@ -1027,6 +1045,123 @@ app.post('/api/auditoria-monitores', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/inventario-monitor-nao-encontrado — auditoria pública (token + senha).
+ * Declara monitor como não encontrado na vistoria; remove vínculos em auditoria_monitores.
+ * Body: { token, senha, monitor_id } ou { token, senha, monitor_id, cancelar: true } para anular.
+ */
+app.post('/api/inventario-monitor-nao-encontrado', async (req, res) => {
+  try {
+    const { token, senha, monitor_id, cancelar } = req.body || {};
+    const s = await validateSecretariaAccess(token, senha);
+    if (!s) return res.status(401).json({ ok: false, error: 'Não autorizado' });
+
+    const mid = parseInt(monitor_id, 10);
+    if (Number.isNaN(mid) || mid <= 0)
+      return res.status(400).json({ ok: false, error: 'monitor_id inválido' });
+
+    const mon = await dbGet(
+      'SELECT id FROM monitores WHERE id = ? AND secretaria_id = ?',
+      [mid, s.id]
+    );
+    if (!mon)
+      return res.status(404).json({ ok: false, error: 'Monitor não encontrado' });
+
+    if (cancelar) {
+      await dbRun(
+        'UPDATE monitores SET inventario_nao_encontrado = 0 WHERE id = ? AND secretaria_id = ?',
+        [mid, s.id]
+      );
+      return res.json({ ok: true, inventario_nao_encontrado: false });
+    }
+
+    await dbRun('DELETE FROM auditoria_monitores WHERE monitor_id = ?', [mid]);
+    await dbRun(
+      'UPDATE monitores SET inventario_nao_encontrado = 1 WHERE id = ? AND secretaria_id = ?',
+      [mid, s.id]
+    );
+    res.json({ ok: true, inventario_nao_encontrado: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * POST /api/inventario-monitor-nao-encontrado-lote — mesmo efeito que o endpoint
+ * unitário, para vários monitor_id desta secretaria (ainda não «não encontrado»).
+ * Body: { token, senha, monitor_ids: number[] }
+ */
+app.post('/api/inventario-monitor-nao-encontrado-lote', async (req, res) => {
+  try {
+    const { token, senha, monitor_ids } = req.body || {};
+    const s = await validateSecretariaAccess(token, senha);
+    if (!s) return res.status(401).json({ ok: false, error: 'Não autorizado' });
+
+    const ids = [
+      ...new Set(
+        (Array.isArray(monitor_ids) ? monitor_ids : [])
+          .map((x) => parseInt(x, 10))
+          .filter((n) => !Number.isNaN(n) && n > 0)
+      ),
+    ];
+    if (!ids.length)
+      return res.status(400).json({
+        ok: false,
+        error: 'Envie monitor_ids com ao menos um id válido.',
+      });
+    if (ids.length > 500)
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Máximo 500 monitores por lote.' });
+
+    const ph = ids.map(() => '?').join(',');
+    const rows = await dbAll(
+      `SELECT id, COALESCE(inventario_nao_encontrado, 0) AS nf FROM monitores
+       WHERE secretaria_id = ? AND id IN (${ph})`,
+      [s.id, ...ids]
+    );
+    if (rows.length !== ids.length)
+      return res.status(400).json({
+        ok: false,
+        error:
+          'Um ou mais monitores não pertencem a esta secretaria ou não existem. Atualize a lista.',
+      });
+    for (const r of rows) {
+      if (r.nf)
+        return res.status(400).json({
+          ok: false,
+          error:
+            'Um ou mais monitores já estão como «não encontrado». Atualize a lista e tente de novo.',
+        });
+    }
+
+    await dbRun('BEGIN IMMEDIATE');
+    try {
+      for (const mid of ids) {
+        await dbRun('DELETE FROM auditoria_monitores WHERE monitor_id = ?', [
+          mid,
+        ]);
+        await dbRun(
+          'UPDATE monitores SET inventario_nao_encontrado = 1 WHERE id = ? AND secretaria_id = ?',
+          [mid, s.id]
+        );
+      }
+      await dbRun('COMMIT');
+    } catch (e) {
+      try {
+        await dbRun('ROLLBACK');
+      } catch (_) {
+        /* ignora */
+      }
+      throw e;
+    }
+
+    res.json({ ok: true, atualizados: ids.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 /** GET /api/admin/secretarias — links e senhas */
 app.get('/api/admin/secretarias', async (req, res) => {
   try {
@@ -1083,7 +1218,7 @@ app.post('/api/admin/importar-planilhas', async (req, res) => {
         .status(400)
         .json({ ok: false, error: 'monitores.xlsx não encontrado em: ' + mon });
 
-    const ok = runImportSubprocess();
+    const ok = await runImportSubprocess();
     if (!ok)
       return res.status(500).json({
         ok: false,
@@ -1541,7 +1676,8 @@ app.get('/api/admin/dashboard', async (req, res) => {
     const monSem = await dbAll(
       `SELECT m.secretaria_id AS sid, COUNT(*) AS n
        FROM monitores m
-       WHERE NOT EXISTS (
+       WHERE COALESCE(m.inventario_nao_encontrado, 0) = 0
+       AND NOT EXISTS (
          SELECT 1 FROM auditoria_monitores am
          INNER JOIN auditoria a ON a.id = am.auditoria_id
          INNER JOIN computadores c ON c.id = a.computador_id
@@ -1799,22 +1935,35 @@ app.get('/api/export', async (req, res) => {
   }
 });
 
+/**
+ * Executa import.js num processo filho sem bloquear o event loop.
+ * Com spawnSync, durante importações longas o Express não respondia a GET /api/health
+ * e o Railway (e similares) terminavam o contentor com SIGTERM.
+ */
 function runImportSubprocess() {
   const rootDir = path.join(__dirname, '..');
   const importScript = path.join(__dirname, 'import.js');
   if (!fs.existsSync(importScript)) {
     console.error('[import] Script não encontrado:', importScript);
-    return false;
+    return Promise.resolve(false);
   }
   console.log('[import] Executando node import.js (cwd:', rootDir + ')');
-  const r = spawnSync(process.execPath, [importScript], {
-    env: process.env,
-    cwd: rootDir,
-    stdio: 'inherit',
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [importScript], {
+      env: process.env,
+      cwd: rootDir,
+      stdio: 'inherit',
+    });
+    child.on('error', (err) => {
+      console.error('[import] Falha ao iniciar import.js:', err.message);
+      resolve(false);
+    });
+    child.on('close', (code) => {
+      if (code !== 0 && code !== null)
+        console.error('[import] import.js saiu com código', code);
+      resolve(code === 0);
+    });
   });
-  if (r.status !== 0)
-    console.error('[import] import.js saiu com código', r.status);
-  return r.status === 0;
 }
 
 function autoImportOnStartExplicitlyEnabled() {
@@ -1878,7 +2027,7 @@ async function maybeAutoImportFromExcel() {
     return;
   }
 
-  runImportSubprocess();
+  await runImportSubprocess();
 }
 
 function startServer() {
@@ -1899,10 +2048,17 @@ function startServer() {
             );
             console.log('[db] Coluna computadores.data_aquisicao adicionada.');
           }
-          const colsMon = await dbAll(`PRAGMA table_info(monitores)`);
+          let colsMon = await dbAll(`PRAGMA table_info(monitores)`);
           if (!colsMon.some((c) => c.name === 'localizacao')) {
             await dbRun('ALTER TABLE monitores ADD COLUMN localizacao TEXT');
             console.log('[db] Coluna monitores.localizacao adicionada.');
+          }
+          colsMon = await dbAll(`PRAGMA table_info(monitores)`);
+          if (!colsMon.some((c) => c.name === 'inventario_nao_encontrado')) {
+            await dbRun(
+              'ALTER TABLE monitores ADD COLUMN inventario_nao_encontrado INTEGER NOT NULL DEFAULT 0'
+            );
+            console.log('[db] Coluna monitores.inventario_nao_encontrado adicionada.');
           }
         } catch (e) {
           console.error('[db] Migração:', e.message);

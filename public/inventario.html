@@ -277,6 +277,24 @@
         <p class="muted inv-mon-painel-hint" id="mon-painel-hint"></p>
         <div class="err" id="mon-painel-err"></div>
         <div id="mon-painel-resumo" class="inv-mon-resumo"></div>
+        <div id="mon-batch-wrap" class="inv-batch-wrap" hidden>
+          <div class="card inv-batch-bar">
+            <p class="inv-batch-summary">
+              <span id="mon-batch-count">0</span> monitor(es) selecionado(s) para lote.
+            </p>
+            <div class="pc-actions-mini">
+              <button type="button" class="btn btn-ghost btn-inline" id="btn-mon-batch-nao">
+                Não encontrado (lote)
+              </button>
+              <button type="button" class="btn btn-ghost btn-inline" id="btn-mon-batch-sel-all">
+                Selecionar visíveis
+              </button>
+              <button type="button" class="btn btn-ghost btn-inline" id="btn-mon-batch-clear">
+                Limpar seleção
+              </button>
+            </div>
+          </div>
+        </div>
         <div id="mon-painel-lista"></div>
       </div>
 

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS monitores (
   modelo TEXT,
   secretaria_id INTEGER NOT NULL,
   localizacao TEXT,
+  inventario_nao_encontrado INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (secretaria_id) REFERENCES secretarias(id)
 );
 

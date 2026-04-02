@@ -275,10 +275,18 @@ async function ensureSchema(db) {
   await new Promise((resolve, reject) => {
     db.exec(schema, (err) => (err ? reject(err) : resolve()));
   });
-  const colsMon = await dbAll(db, 'PRAGMA table_info(monitores)');
+  let colsMon = await dbAll(db, 'PRAGMA table_info(monitores)');
   if (!colsMon.some((c) => c.name === 'localizacao')) {
     await dbRun(db, 'ALTER TABLE monitores ADD COLUMN localizacao TEXT');
     console.log('[import] Coluna monitores.localizacao adicionada (migração).');
+  }
+  colsMon = await dbAll(db, 'PRAGMA table_info(monitores)');
+  if (!colsMon.some((c) => c.name === 'inventario_nao_encontrado')) {
+    await dbRun(
+      db,
+      'ALTER TABLE monitores ADD COLUMN inventario_nao_encontrado INTEGER NOT NULL DEFAULT 0'
+    );
+    console.log('[import] Coluna monitores.inventario_nao_encontrado adicionada (migração).');
   }
 }
 
