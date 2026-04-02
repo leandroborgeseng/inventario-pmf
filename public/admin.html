@@ -36,9 +36,17 @@
         <div id="tab-rep" class="admin-section active">
           <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem">Resumo</h2>
           <div class="stat-grid" id="stat-grid"></div>
-          <button type="button" class="btn btn-success" id="btn-export" style="margin-top: 1.25rem">
-            Exportar Excel
-          </button>
+          <div class="btn-row-inline" style="margin-top: 1.25rem; flex-wrap: wrap">
+            <button type="button" class="btn btn-success" id="btn-export">
+              Exportar Excel
+            </button>
+            <button type="button" class="btn btn-ghost" id="btn-backup-db">
+              Backup do banco (.sqlite)
+            </button>
+          </div>
+          <p class="muted" style="font-size: 0.85rem; margin: 0.35rem 0 0">
+            O backup contém todas as vistorias — guarde fora do servidor (ex.: após mudanças importantes).
+          </p>
           <h2 style="margin-top: 1.75rem; font-size: 1.1rem">Por secretaria</h2>
           <div class="table-scroll">
             <table class="admin-table" id="table-sec">
@@ -670,6 +678,29 @@
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
           a.download = 'inventario-auditado.xlsx';
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+
+        $('btn-backup-db').onclick = async () => {
+          const pwd = getPwd();
+          if (!pwd) return showLogin();
+          const r = await fetch(
+            '/api/admin/backup-sqlite?adminSenha=' + encodeURIComponent(pwd)
+          );
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            alert(j.error || 'Falha no backup');
+            return;
+          }
+          const cd = r.headers.get('Content-Disposition');
+          let name = 'inventario-backup.sqlite';
+          const m = cd && cd.match(/filename="([^"]+)"/);
+          if (m) name = m[1];
+          const blob = await r.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = name;
           a.click();
           URL.revokeObjectURL(a.href);
         };

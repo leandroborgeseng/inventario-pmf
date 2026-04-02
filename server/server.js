@@ -11,9 +11,13 @@ const XLSX = require('xlsx');
 
 const PORT = process.env.PORT || 3000;
 
-const DB_PATH =
-  process.env.DB_PATH ||
-  path.join(__dirname, 'database.sqlite');
+const {
+  resolveDbPath,
+  logDbPersistenceAndMaybeExit,
+} = require('./db-config');
+const DB_PATH = resolveDbPath();
+process.env.DB_PATH = DB_PATH;
+logDbPersistenceAndMaybeExit(DB_PATH);
 
 function ensureDbDir() {
   const dir = path.dirname(DB_PATH);
@@ -533,6 +537,26 @@ app.post('/api/admin/importar-planilhas', async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** GET /api/admin/backup-sqlite — cópia do arquivo SQLite (WAL consolidado). */
+app.get('/api/admin/backup-sqlite', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!fs.existsSync(DB_PATH))
+      return res.status(404).json({ ok: false, error: 'Banco não encontrado' });
+    await dbRun('PRAGMA wal_checkpoint(FULL)');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="inventario-backup-${stamp}.sqlite"`
+    );
+    fs.createReadStream(DB_PATH).pipe(res);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ ok: false, error: e.message });
   }
 });
 
@@ -1106,7 +1130,6 @@ function startServer() {
         );
 
       app.listen(PORT, () => {
-        console.log(`SQLite: ${DB_PATH}`);
         console.log(`Servidor ouvindo na porta ${PORT}`);
         setImmediate(() => {
           maybeAutoImportFromExcel().catch((e) =>

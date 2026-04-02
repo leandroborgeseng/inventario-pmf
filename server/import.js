@@ -12,9 +12,9 @@
  *
  * Uso: npm run import
  *
- * Opcional (Railway / caminhos customizados):
- *   DB_PATH, COMPUTADORES_XLSX, MONITORES_XLSX, IMPORT_DEFAULT_SENHA,
- *   SECRETARIA_TOKEN_SALT (opcional, fixe no Railway para URL menos óbvia; se mudar, os tokens mudam)
+ * Caminho do SQLite: server/db-config.js (Railway sem DB_PATH → /data/database.sqlite).
+ * Opcional: COMPUTADORES_XLSX, MONITORES_XLSX, IMPORT_DEFAULT_SENHA,
+ * SECRETARIA_TOKEN_SALT (fixe no Railway; se mudar, os tokens mudam)
  */
 
 const path = require('path');
@@ -22,10 +22,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 const XLSX = require('xlsx');
 const sqlite3 = require('sqlite3').verbose();
+const { resolveDbPath } = require('./db-config');
 
 const rootDir = path.join(__dirname, '..');
-const DB_PATH =
-  process.env.DB_PATH || path.join(__dirname, 'database.sqlite');
+const DB_PATH = resolveDbPath();
 
 const COMPUTADORES_XLSX =
   process.env.COMPUTADORES_XLSX ||
