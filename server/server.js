@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const { spawnSync } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -79,8 +80,40 @@ function validateAdmin(req) {
   return Boolean(expected && pwd === expected);
 }
 
+/** URL pública para links no admin (Railway, etc.). Aceita vários nomes de variável. */
+function resolveStaticPublicUrl() {
+  const raw =
+    process.env.PUBLIC_BASE_URL ||
+    process.env.PUBLIC_URL ||
+    process.env.APP_URL ||
+    process.env.BASE_URL ||
+    process.env.FRONTEND_URL ||
+    '';
+  let u = String(raw).trim().replace(/\/$/, '');
+  if (u && !/^https?:\/\//i.test(u))
+    u = 'https://' + u.replace(/^\/*/, '');
+  if (u) return u;
+
+  const rDom = String(process.env.RAILWAY_PUBLIC_DOMAIN || '').trim();
+  if (rDom) {
+    const host = rDom.replace(/^https?:\/\//, '').split('/')[0];
+    if (host) return `https://${host}`;
+  }
+
+  const rUrl = String(
+    process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_PUBLIC_URL || ''
+  ).trim();
+  if (rUrl) {
+    let x = rUrl.replace(/\/$/, '');
+    if (!/^https?:\/\//i.test(x)) x = 'https://' + x.replace(/^\/*/, '');
+    return x;
+  }
+
+  return '';
+}
+
 function publicBaseUrl(req) {
-  const fixed = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  const fixed = resolveStaticPublicUrl();
   if (fixed) return fixed;
   const proto =
     req.get('x-forwarded-proto') ||
@@ -341,9 +374,59 @@ app.get('/api/admin/secretarias', async (req, res) => {
         url: base + path,
       };
     });
-    res.json({ ok: true, baseUrl: base, secretarias });
+    const fromEnv = resolveStaticPublicUrl();
+    res.json({
+      ok: true,
+      baseUrl: base,
+      publicUrlFromEnv: fromEnv || null,
+      secretarias,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/admin/importar-planilhas — reexecuta import.js (apaga equipamentos e auditoria).
+ * Requer mesmo corpo/header de admin que os outros endpoints.
+ */
+app.post('/api/admin/importar-planilhas', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+
+    const comp =
+      process.env.COMPUTADORES_XLSX ||
+      path.join(__dirname, '..', 'computadores.xlsx');
+    const mon =
+      process.env.MONITORES_XLSX ||
+      path.join(__dirname, '..', 'monitores.xlsx');
+    if (!fs.existsSync(comp))
+      return res.status(400).json({
+        ok: false,
+        error: 'computadores.xlsx não encontrado em: ' + comp,
+      });
+    if (!fs.existsSync(mon))
+      return res
+        .status(400)
+        .json({ ok: false, error: 'monitores.xlsx não encontrado em: ' + mon });
+
+    const ok = runImportSubprocess();
+    if (!ok)
+      return res.status(500).json({
+        ok: false,
+        error: 'import.js falhou — veja os logs do servidor',
+      });
+
+    const totalPc = await dbGet('SELECT COUNT(*) AS n FROM computadores');
+    const totalMon = await dbGet('SELECT COUNT(*) AS n FROM monitores');
+    res.json({
+      ok: true,
+      computadores: totalPc.n,
+      monitores: totalMon.n,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
@@ -837,6 +920,69 @@ app.get('/api/export', async (req, res) => {
   }
 });
 
+function runImportSubprocess() {
+  const rootDir = path.join(__dirname, '..');
+  const importScript = path.join(__dirname, 'import.js');
+  if (!fs.existsSync(importScript)) {
+    console.error('[import] Script não encontrado:', importScript);
+    return false;
+  }
+  console.log('[import] Executando node import.js (cwd:', rootDir + ')');
+  const r = spawnSync(process.execPath, [importScript], {
+    env: process.env,
+    cwd: rootDir,
+    stdio: 'inherit',
+  });
+  if (r.status !== 0)
+    console.error('[import] import.js saiu com código', r.status);
+  return r.status === 0;
+}
+
+async function maybeAutoImportFromExcel() {
+  const off = String(process.env.AUTO_IMPORT_ON_START || '')
+    .toLowerCase();
+  if (off === '0' || off === 'false' || off === 'no') {
+    console.log('[import] AUTO_IMPORT_ON_START desligado — não importa ao subir.');
+    return;
+  }
+
+  let n = 0;
+  try {
+    const row = await dbGet('SELECT COUNT(*) AS n FROM computadores');
+    n = row ? row.n : 0;
+  } catch (e) {
+    console.warn('[import] Não foi possível contar computadores:', e.message);
+    return;
+  }
+
+  if (n > 0) {
+    console.log(
+      '[import] Banco já tem',
+      n,
+      'computador(es). Import automático ignorado (use npm run import ou limpe o DB).'
+    );
+    return;
+  }
+
+  const comp =
+    process.env.COMPUTADORES_XLSX ||
+    path.join(__dirname, '..', 'computadores.xlsx');
+  const mon =
+    process.env.MONITORES_XLSX ||
+    path.join(__dirname, '..', 'monitores.xlsx');
+
+  if (!fs.existsSync(comp)) {
+    console.warn('[import] Planilha não encontrada:', comp);
+    return;
+  }
+  if (!fs.existsSync(mon)) {
+    console.warn('[import] Planilha não encontrada:', mon);
+    return;
+  }
+
+  runImportSubprocess();
+}
+
 function startServer() {
   db.serialize(() => {
     db.run('PRAGMA foreign_keys = ON');
@@ -846,9 +992,21 @@ function startServer() {
         console.error('Erro ao aplicar schema:', err.message);
         process.exit(1);
       }
+      const pub = resolveStaticPublicUrl();
+      if (pub) console.log('[app] URL pública (env):', pub);
+      else
+        console.log(
+          '[app] Defina PUBLIC_URL ou PUBLIC_BASE_URL no Railway para links fixos no admin.'
+        );
+
       app.listen(PORT, () => {
-        console.log(`Servidor em http://localhost:${PORT}`);
         console.log(`SQLite: ${DB_PATH}`);
+        console.log(`Servidor ouvindo na porta ${PORT}`);
+        setImmediate(() => {
+          maybeAutoImportFromExcel().catch((e) =>
+            console.error('[import] Erro no import automático:', e)
+          );
+        });
       });
     });
   });
