@@ -79,7 +79,18 @@ function validateAdmin(req) {
   return Boolean(expected && pwd === expected);
 }
 
+function publicBaseUrl(req) {
+  const fixed = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  if (fixed) return fixed;
+  const proto =
+    req.get('x-forwarded-proto') ||
+    (req.secure ? 'https' : 'http');
+  const host = req.get('x-forwarded-host') || req.get('host') || 'localhost';
+  return `${proto}://${host}`;
+}
+
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(bodyParser.json({ limit: '2mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -303,6 +314,406 @@ app.post('/api/auditoria-monitores', async (req, res) => {
       );
     }
 
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** GET /api/admin/secretarias — links e senhas */
+app.get('/api/admin/secretarias', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ error: 'Não autorizado' });
+
+    const base = publicBaseUrl(req);
+    const rows = await dbAll(
+      `SELECT id, nome, token, senha FROM secretarias ORDER BY nome COLLATE NOCASE`
+    );
+    const secretarias = rows.map((s) => {
+      const path = `/inventario/${s.token}`;
+      return {
+        id: s.id,
+        nome: s.nome,
+        token: s.token,
+        senha: s.senha,
+        path,
+        url: base + path,
+      };
+    });
+    res.json({ ok: true, baseUrl: base, secretarias });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** PATCH /api/admin/secretaria/:id — { adminSenha, senha } */
+app.patch('/api/admin/secretaria/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const { senha } = req.body || {};
+    if (!senha || String(senha).trim() === '')
+      return res.status(400).json({ ok: false, error: 'senha obrigatória' });
+    const id = parseInt(req.params.id, 10);
+    const r = await dbRun('UPDATE secretarias SET senha = ? WHERE id = ?', [
+      String(senha),
+      id,
+    ]);
+    if (r.changes === 0)
+      return res.status(404).json({ ok: false, error: 'Secretaria não encontrada' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+function adminListParams(req) {
+  const secretariaId = req.query.secretaria_id
+    ? parseInt(req.query.secretaria_id, 10)
+    : null;
+      const q = (req.query.q || '').trim();
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  return { secretariaId, q, limit, offset };
+}
+
+/** GET /api/admin/computador/:id */
+app.get('/api/admin/computador/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ error: 'Não autorizado' });
+    const id = parseInt(req.params.id, 10);
+    const r = await dbGet(
+      `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
+              c.secretaria_id, s.nome AS secretaria_nome,
+              COALESCE(a.confirmado, '') AS audit_status
+       FROM computadores c
+       JOIN secretarias s ON s.id = c.secretaria_id
+       LEFT JOIN auditoria a ON a.computador_id = c.id
+       WHERE c.id = ?`,
+      [id]
+    );
+    if (!r) return res.status(404).json({ error: 'Não encontrado' });
+    res.json({
+      ok: true,
+      computador: {
+        id: r.id,
+        nome_maquina: r.nome_maquina,
+        patrimonio: r.patrimonio,
+        localizacao: r.localizacao,
+        status_ad: r.status_ad,
+        secretaria_id: r.secretaria_id,
+        secretaria_nome: r.secretaria_nome,
+        auditoria_status: r.audit_status || null,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/admin/monitor/:id */
+app.get('/api/admin/monitor/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ error: 'Não autorizado' });
+    const id = parseInt(req.params.id, 10);
+    const r = await dbGet(
+      `SELECT m.id, m.patrimonio, m.modelo, m.secretaria_id, s.nome AS secretaria_nome
+       FROM monitores m
+       JOIN secretarias s ON s.id = m.secretaria_id
+       WHERE m.id = ?`,
+      [id]
+    );
+    if (!r) return res.status(404).json({ error: 'Não encontrado' });
+    res.json({ ok: true, monitor: r });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/admin/computadores */
+app.get('/api/admin/computadores', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ error: 'Não autorizado' });
+
+    const { secretariaId, q, limit, offset } = adminListParams(req);
+    const params = [];
+    let where = '1=1';
+    if (secretariaId) {
+      where += ' AND c.secretaria_id = ?';
+      params.push(secretariaId);
+    }
+    if (q) {
+      where +=
+        ' AND (c.nome_maquina LIKE ? OR c.patrimonio LIKE ? OR c.localizacao LIKE ?)';
+      const like = '%' + q.replace(/%/g, '\\%') + '%';
+      params.push(like, like, like);
+    }
+
+    const totalRow = await dbGet(
+      `SELECT COUNT(*) AS n FROM computadores c WHERE ${where}`,
+      params
+    );
+    params.push(limit, offset);
+    const rows = await dbAll(
+      `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
+              c.secretaria_id, s.nome AS secretaria_nome,
+              COALESCE(a.confirmado, '') AS audit_status
+       FROM computadores c
+       JOIN secretarias s ON s.id = c.secretaria_id
+       LEFT JOIN auditoria a ON a.computador_id = c.id
+       WHERE ${where}
+       ORDER BY s.nome COLLATE NOCASE, c.nome_maquina COLLATE NOCASE
+       LIMIT ? OFFSET ?`,
+      params
+    );
+
+    res.json({
+      ok: true,
+      total: totalRow.n,
+      limit,
+      offset,
+      computadores: rows.map((r) => ({
+        id: r.id,
+        nome_maquina: r.nome_maquina,
+        patrimonio: r.patrimonio,
+        localizacao: r.localizacao,
+        status_ad: r.status_ad,
+        secretaria_id: r.secretaria_id,
+        secretaria_nome: r.secretaria_nome,
+        auditoria_status: r.audit_status || null,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/admin/monitores */
+app.get('/api/admin/monitores', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ error: 'Não autorizado' });
+
+    const { secretariaId, q, limit, offset } = adminListParams(req);
+    const params = [];
+    let where = '1=1';
+    if (secretariaId) {
+      where += ' AND m.secretaria_id = ?';
+      params.push(secretariaId);
+    }
+    if (q) {
+      where += ' AND (m.patrimonio LIKE ? OR m.modelo LIKE ?)';
+      const like = '%' + q.replace(/%/g, '\\%') + '%';
+      params.push(like, like);
+    }
+
+    const totalRow = await dbGet(
+      `SELECT COUNT(*) AS n FROM monitores m WHERE ${where}`,
+      params
+    );
+    params.push(limit, offset);
+    const rows = await dbAll(
+      `SELECT m.id, m.patrimonio, m.modelo, m.secretaria_id, s.nome AS secretaria_nome
+       FROM monitores m
+       JOIN secretarias s ON s.id = m.secretaria_id
+       WHERE ${where}
+       ORDER BY s.nome COLLATE NOCASE, m.patrimonio COLLATE NOCASE
+       LIMIT ? OFFSET ?`,
+      params
+    );
+
+    res.json({
+      ok: true,
+      total: totalRow.n,
+      limit,
+      offset,
+      monitores: rows,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/admin/secretarias-ids — lista mínima para selects */
+app.get('/api/admin/secretarias-opcoes', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ error: 'Não autorizado' });
+    const rows = await dbAll(
+      'SELECT id, nome FROM secretarias ORDER BY nome COLLATE NOCASE'
+    );
+    res.json({ ok: true, secretarias: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/admin/computador */
+app.post('/api/admin/computador', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const b = req.body || {};
+    const sid = parseInt(b.secretaria_id, 10);
+    if (!sid)
+      return res.status(400).json({ ok: false, error: 'secretaria_id obrigatório' });
+    const ex = await dbGet('SELECT id FROM secretarias WHERE id = ?', [sid]);
+    if (!ex) return res.status(400).json({ ok: false, error: 'Secretaria inválida' });
+    const r = await dbRun(
+      `INSERT INTO computadores (nome_maquina, patrimonio, secretaria_id, localizacao, status_ad)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        b.nome_maquina || null,
+        b.patrimonio || null,
+        sid,
+        b.localizacao || null,
+        b.status_ad || null,
+      ]
+    );
+    res.json({ ok: true, id: r.lastID });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** PATCH /api/admin/computador/:id */
+app.patch('/api/admin/computador/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const id = parseInt(req.params.id, 10);
+    const b = req.body || {};
+    const pc = await dbGet(
+      'SELECT * FROM computadores WHERE id = ?',
+      [id]
+    );
+    if (!pc) return res.status(404).json({ ok: false, error: 'Não encontrado' });
+
+    let sid = pc.secretaria_id;
+    if (b.secretaria_id !== undefined && b.secretaria_id !== null) {
+      sid = parseInt(b.secretaria_id, 10);
+      const ex = await dbGet('SELECT id FROM secretarias WHERE id = ?', [sid]);
+      if (!ex) return res.status(400).json({ ok: false, error: 'Secretaria inválida' });
+    }
+
+    const nome =
+      b.nome_maquina !== undefined ? b.nome_maquina : pc.nome_maquina;
+    const pat =
+      b.patrimonio !== undefined ? b.patrimonio : pc.patrimonio;
+    const loc =
+      b.localizacao !== undefined ? b.localizacao : pc.localizacao;
+    const ad =
+      b.status_ad !== undefined ? b.status_ad : pc.status_ad;
+
+    await dbRun(
+      `UPDATE computadores SET nome_maquina = ?, patrimonio = ?, secretaria_id = ?,
+         localizacao = ?, status_ad = ? WHERE id = ?`,
+      [nome, pat, sid, loc, ad, id]
+    );
+    if (
+      b.secretaria_id !== undefined &&
+      b.secretaria_id !== null &&
+      sid !== pc.secretaria_id
+    ) {
+      await dbRun(
+        'UPDATE auditoria SET secretaria_id = ? WHERE computador_id = ?',
+        [sid, id]
+      );
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** DELETE /api/admin/computador/:id */
+app.delete('/api/admin/computador/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const id = parseInt(req.params.id, 10);
+    const aud = await dbAll('SELECT id FROM auditoria WHERE computador_id = ?', [
+      id,
+    ]);
+    for (const a of aud) {
+      await dbRun('DELETE FROM auditoria_monitores WHERE auditoria_id = ?', [a.id]);
+    }
+    await dbRun('DELETE FROM auditoria WHERE computador_id = ?', [id]);
+    const r = await dbRun('DELETE FROM computadores WHERE id = ?', [id]);
+    if (r.changes === 0)
+      return res.status(404).json({ ok: false, error: 'Não encontrado' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** POST /api/admin/monitor */
+app.post('/api/admin/monitor', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const b = req.body || {};
+    const sid = parseInt(b.secretaria_id, 10);
+    if (!sid)
+      return res.status(400).json({ ok: false, error: 'secretaria_id obrigatório' });
+    const ex = await dbGet('SELECT id FROM secretarias WHERE id = ?', [sid]);
+    if (!ex) return res.status(400).json({ ok: false, error: 'Secretaria inválida' });
+    const r = await dbRun(
+      `INSERT INTO monitores (patrimonio, modelo, secretaria_id) VALUES (?, ?, ?)`,
+      [b.patrimonio || null, b.modelo || null, sid]
+    );
+    res.json({ ok: true, id: r.lastID });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** PATCH /api/admin/monitor/:id */
+app.patch('/api/admin/monitor/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const id = parseInt(req.params.id, 10);
+    const b = req.body || {};
+    const row = await dbGet('SELECT * FROM monitores WHERE id = ?', [id]);
+    if (!row) return res.status(404).json({ ok: false, error: 'Não encontrado' });
+
+    let sid = row.secretaria_id;
+    if (b.secretaria_id !== undefined && b.secretaria_id !== null) {
+      sid = parseInt(b.secretaria_id, 10);
+      const ex = await dbGet('SELECT id FROM secretarias WHERE id = ?', [sid]);
+      if (!ex) return res.status(400).json({ ok: false, error: 'Secretaria inválida' });
+    }
+    const pat =
+      b.patrimonio !== undefined ? b.patrimonio : row.patrimonio;
+    const mod =
+      b.modelo !== undefined ? b.modelo : row.modelo;
+
+    await dbRun(
+      `UPDATE monitores SET patrimonio = ?, modelo = ?, secretaria_id = ? WHERE id = ?`,
+      [pat, mod, sid, id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** DELETE /api/admin/monitor/:id */
+app.delete('/api/admin/monitor/:id', async (req, res) => {
+  try {
+    if (!validateAdmin(req))
+      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    const id = parseInt(req.params.id, 10);
+    await dbRun('DELETE FROM auditoria_monitores WHERE monitor_id = ?', [id]);
+    const r = await dbRun('DELETE FROM monitores WHERE id = ?', [id]);
+    if (r.changes === 0)
+      return res.status(404).json({ ok: false, error: 'Não encontrado' });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <main>
+    <main class="admin-main">
       <div id="admin-login" class="screen active">
         <h1>Painel admin</h1>
         <p class="sub">Informe a senha definida em ADMIN_SENHA no ambiente.</p>
@@ -18,32 +18,163 @@
           <div class="err" id="admin-err"></div>
         </div>
       </div>
+
       <div id="admin-dash" class="screen">
-        <h1>Relatório</h1>
-        <p class="sub" id="dash-updated"></p>
-        <div class="stat-grid" id="stat-grid"></div>
-        <button type="button" class="btn btn-success" id="btn-export" style="margin-top: 1.25rem">
-          Exportar Excel
-        </button>
-        <h2 style="margin-top: 1.75rem; font-size: 1.1rem">Por secretaria</h2>
-        <div style="overflow-x: auto">
-          <table class="admin-table" id="table-sec">
-            <thead>
-              <tr>
-                <th>Secretaria</th>
-                <th>Total</th>
-                <th>OK</th>
-                <th>Não enc.</th>
-                <th>Outro</th>
-                <th>Pend.</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-admin-sair">Sair</button>
         </div>
-        <button type="button" class="btn btn-ghost" id="btn-admin-sair" style="margin-top: 1rem">
-          Sair
-        </button>
+        <h1>Administração</h1>
+        <p class="sub" id="dash-updated"></p>
+
+        <nav class="admin-nav" id="admin-nav">
+          <button type="button" class="btn btn-ghost active" data-tab="rep">Relatório</button>
+          <button type="button" class="btn btn-ghost" data-tab="acc">Secretarias</button>
+          <button type="button" class="btn btn-ghost" data-tab="pc">Computadores</button>
+          <button type="button" class="btn btn-ghost" data-tab="mon">Monitores</button>
+        </nav>
+
+        <div id="tab-rep" class="admin-section active">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem">Resumo</h2>
+          <div class="stat-grid" id="stat-grid"></div>
+          <button type="button" class="btn btn-success" id="btn-export" style="margin-top: 1.25rem">
+            Exportar Excel
+          </button>
+          <h2 style="margin-top: 1.75rem; font-size: 1.1rem">Por secretaria</h2>
+          <div class="table-scroll">
+            <table class="admin-table" id="table-sec">
+              <thead>
+                <tr>
+                  <th>Secretaria</th>
+                  <th>Total</th>
+                  <th>OK</th>
+                  <th>Não enc.</th>
+                  <th>Outro</th>
+                  <th>Pend.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="tab-acc" class="admin-section">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.5rem">Links e senhas por secretaria</h2>
+          <p class="muted" style="margin: 0 0 0.75rem">
+            Defina <code>PUBLIC_BASE_URL</code> no Railway para o link completo. Se vazio, usa o host atual.
+          </p>
+          <div id="sec-links-wrap" class="table-scroll"></div>
+        </div>
+
+        <div id="tab-pc" class="admin-section">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem">Computadores</h2>
+          <div class="card">
+            <label class="field">Filtrar secretaria</label>
+            <select id="pc-filter-sec" class="field-sm"></select>
+            <label class="field" style="margin-top: 0.65rem">Busca (nome, patrimônio, local)</label>
+            <input id="pc-q" type="text" class="field-sm" placeholder="Buscar…" />
+            <button type="button" class="btn btn-primary" id="pc-search" style="margin-top: 0.65rem">
+              Atualizar lista
+            </button>
+          </div>
+          <div class="card" style="margin-top: 1rem">
+            <p class="card-title" style="font-size: 1rem">Novo / editar computador</p>
+            <input type="hidden" id="pc-edit-id" value="" />
+            <div class="form-grid-admin two">
+              <div>
+                <label class="field" for="pc-f-nome">Nome da máquina</label>
+                <input id="pc-f-nome" class="field-sm" type="text" />
+              </div>
+              <div>
+                <label class="field" for="pc-f-pat">Patrimônio</label>
+                <input id="pc-f-pat" class="field-sm" type="text" />
+              </div>
+              <div>
+                <label class="field" for="pc-f-loc">Localização</label>
+                <input id="pc-f-loc" class="field-sm" type="text" />
+              </div>
+              <div>
+                <label class="field" for="pc-f-ad">Status AD</label>
+                <input id="pc-f-ad" class="field-sm" type="text" />
+              </div>
+              <div style="grid-column: 1 / -1">
+                <label class="field" for="pc-f-sec">Secretaria</label>
+                <select id="pc-f-sec" class="field-sm"></select>
+              </div>
+            </div>
+            <div class="btn-row-inline">
+              <button type="button" class="btn btn-success btn-sm" id="pc-save">Salvar</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="pc-new-clear">Limpar (novo)</button>
+            </div>
+          </div>
+          <p class="muted" id="pc-list-meta"></p>
+          <div class="table-scroll">
+            <table class="admin-table" id="table-pc">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nome</th>
+                  <th>Pat.</th>
+                  <th>Secretaria</th>
+                  <th>Aud.</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-ghost" id="pc-more">Carregar mais</button>
+        </div>
+
+        <div id="tab-mon" class="admin-section">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem">Monitores</h2>
+          <div class="card">
+            <label class="field">Filtrar secretaria</label>
+            <select id="mon-filter-sec" class="field-sm"></select>
+            <label class="field" style="margin-top: 0.65rem">Busca</label>
+            <input id="mon-q" type="text" class="field-sm" placeholder="Patrimônio ou modelo…" />
+            <button type="button" class="btn btn-primary" id="mon-search" style="margin-top: 0.65rem">
+              Atualizar lista
+            </button>
+          </div>
+          <div class="card" style="margin-top: 1rem">
+            <p class="card-title" style="font-size: 1rem">Novo / editar monitor</p>
+            <input type="hidden" id="mon-edit-id" value="" />
+            <div class="form-grid-admin two">
+              <div>
+                <label class="field" for="mon-f-pat">Patrimônio</label>
+                <input id="mon-f-pat" class="field-sm" type="text" />
+              </div>
+              <div>
+                <label class="field" for="mon-f-mod">Modelo</label>
+                <input id="mon-f-mod" class="field-sm" type="text" />
+              </div>
+              <div style="grid-column: 1 / -1">
+                <label class="field" for="mon-f-sec">Secretaria</label>
+                <select id="mon-f-sec" class="field-sm"></select>
+              </div>
+            </div>
+            <div class="btn-row-inline">
+              <button type="button" class="btn btn-success btn-sm" id="mon-save">Salvar</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="mon-new-clear">Limpar (novo)</button>
+            </div>
+          </div>
+          <p class="muted" id="mon-list-meta"></p>
+          <div class="table-scroll">
+            <table class="admin-table" id="table-mon">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Pat.</th>
+                  <th>Modelo</th>
+                  <th>Secretaria</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-ghost" id="mon-more">Carregar mais</button>
+        </div>
       </div>
     </main>
     <script>
@@ -56,6 +187,14 @@
           el.classList.toggle('show', !!msg);
         };
 
+        function getPwd() {
+          return localStorage.getItem(STORAGE_KEY) || '';
+        }
+
+        function apiHeaders() {
+          return { 'X-Admin-Password': getPwd(), 'Content-Type': 'application/json' };
+        }
+
         function showLogin() {
           $('admin-login').classList.add('active');
           $('admin-dash').classList.remove('active');
@@ -67,15 +206,19 @@
           $('admin-dash').classList.add('active');
         }
 
-        async function loadRelatorio(pwd) {
-          const r = await fetch('/api/relatorio', {
-            headers: { 'X-Admin-Password': pwd },
-          });
+        function escapeHtml(s) {
+          const d = document.createElement('div');
+          d.textContent = s == null ? '' : String(s);
+          return d.innerHTML;
+        }
+
+        async function loadRelatorio() {
+          const r = await fetch('/api/relatorio', { headers: apiHeaders() });
           if (!r.ok) throw new Error('Falha ao carregar');
           return r.json();
         }
 
-        function renderDash(data) {
+        function renderRep(data) {
           const t = data.totais;
           $('stat-grid').innerHTML =
             '<div class="stat-box"><strong>' +
@@ -118,29 +261,361 @@
           });
         }
 
-        function escapeHtml(s) {
-          const d = document.createElement('div');
-          d.textContent = s;
-          return d.innerHTML;
+        let secretariasOpcoes = [];
+
+        async function loadSecretariasOpcoes() {
+          const r = await fetch('/api/admin/secretarias-opcoes', { headers: apiHeaders() });
+          if (!r.ok) throw new Error('opções');
+          const j = await r.json();
+          secretariasOpcoes = j.secretarias || [];
+          fillSecSelect($('pc-filter-sec'), true);
+          fillSecSelect($('pc-f-sec'), false);
+          fillSecSelect($('mon-filter-sec'), true);
+          fillSecSelect($('mon-f-sec'), false);
         }
+
+        function fillSecSelect(sel, withAll) {
+          const cur = sel.value;
+          sel.innerHTML = '';
+          if (withAll) {
+            const o = document.createElement('option');
+            o.value = '';
+            o.textContent = 'Todas';
+            sel.appendChild(o);
+          }
+          secretariasOpcoes.forEach((s) => {
+            const o = document.createElement('option');
+            o.value = String(s.id);
+            o.textContent = s.nome;
+            sel.appendChild(o);
+          });
+          if (cur && [...sel.options].some((x) => x.value === cur)) sel.value = cur;
+        }
+
+        async function loadSecretariasLinks() {
+          const r = await fetch('/api/admin/secretarias', { headers: apiHeaders() });
+          if (!r.ok) return;
+          const j = await r.json();
+          const wrap = $('sec-links-wrap');
+          wrap.innerHTML = '';
+          const table = document.createElement('table');
+          table.className = 'admin-table';
+          const thead = document.createElement('thead');
+          thead.innerHTML =
+            '<tr><th>Secretaria</th><th>Link</th><th>Senha</th><th>Nova senha</th></tr>';
+          table.appendChild(thead);
+          const tbody = document.createElement('tbody');
+          j.secretarias.forEach((s) => {
+            const tr = document.createElement('tr');
+            const tdN = document.createElement('td');
+            tdN.textContent = s.nome;
+            tr.appendChild(tdN);
+
+            const tdL = document.createElement('td');
+            const divU = document.createElement('div');
+            divU.className = 'url-copy';
+            divU.textContent = s.url;
+            tdL.appendChild(divU);
+            const divB = document.createElement('div');
+            divB.className = 'btn-row-inline';
+            const btnC = document.createElement('button');
+            btnC.type = 'button';
+            btnC.className = 'btn btn-ghost btn-sm';
+            btnC.textContent = 'Copiar link';
+            const urlRef = s.url;
+            btnC.onclick = () => {
+              navigator.clipboard.writeText(urlRef);
+              btnC.textContent = 'Copiado!';
+              setTimeout(() => (btnC.textContent = 'Copiar link'), 1500);
+            };
+            divB.appendChild(btnC);
+            tdL.appendChild(divB);
+            tr.appendChild(tdL);
+
+            const tdP = document.createElement('td');
+            const code = document.createElement('code');
+            code.style.wordBreak = 'break-all';
+            code.textContent = s.senha;
+            tdP.appendChild(code);
+            tr.appendChild(tdP);
+
+            const tdNpw = document.createElement('td');
+            const inp = document.createElement('input');
+            inp.type = 'password';
+            inp.className = 'field-sm';
+            inp.placeholder = 'Nova senha';
+            inp.autocomplete = 'new-password';
+            const btnS = document.createElement('button');
+            btnS.type = 'button';
+            btnS.className = 'btn btn-primary btn-sm';
+            btnS.textContent = 'Salvar';
+            const secId = s.id;
+            btnS.onclick = async () => {
+              const senha = inp.value ? inp.value : '';
+              if (!senha) {
+                alert('Digite a nova senha.');
+                return;
+              }
+              const res = await fetch('/api/admin/secretaria/' + secId, {
+                method: 'PATCH',
+                headers: apiHeaders(),
+                body: JSON.stringify({ senha: senha }),
+              });
+              const out = await res.json().catch(() => ({}));
+              if (!res.ok || !out.ok) {
+                alert(out.error || 'Falha ao salvar senha');
+                return;
+              }
+              inp.value = '';
+              alert('Senha atualizada.');
+              loadSecretariasLinks();
+            };
+            tdNpw.appendChild(inp);
+            tdNpw.appendChild(btnS);
+            tr.appendChild(tdNpw);
+
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          wrap.appendChild(table);
+        }
+
+        let pcOffset = 0;
+        const pcLimit = 100;
+
+        async function loadPc(reset) {
+          if (reset) {
+            pcOffset = 0;
+            $('table-pc').querySelector('tbody').innerHTML = '';
+          }
+          const sid = $('pc-filter-sec').value;
+          const q = $('pc-q').value.trim();
+          let url =
+            '/api/admin/computadores?limit=' +
+            pcLimit +
+            '&offset=' +
+            pcOffset;
+          if (sid) url += '&secretaria_id=' + encodeURIComponent(sid);
+          if (q) url += '&q=' + encodeURIComponent(q);
+          const r = await fetch(url, { headers: apiHeaders() });
+          if (!r.ok) {
+            alert('Erro ao carregar computadores');
+            return;
+          }
+          const j = await r.json();
+          $('pc-list-meta').textContent =
+            'Mostrando ' +
+            (pcOffset + j.computadores.length) +
+            ' de ' +
+            j.total;
+          const tb = $('table-pc').querySelector('tbody');
+          j.computadores.forEach((c) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              '<td>' +
+              c.id +
+              '</td><td>' +
+              escapeHtml(c.nome_maquina || '') +
+              '</td><td>' +
+              escapeHtml(c.patrimonio || '') +
+              '</td><td>' +
+              escapeHtml(c.secretaria_nome || '') +
+              '</td><td>' +
+              escapeHtml(c.auditoria_status || '—') +
+              '</td><td><div class="btn-row-inline"><button type="button" class="btn btn-ghost btn-sm" data-pc-edit="' +
+              c.id +
+              '">Editar</button><button type="button" class="btn btn-danger btn-sm" data-pc-del="' +
+              c.id +
+              '">Excluir</button></div></td>';
+            tb.appendChild(tr);
+          });
+          pcOffset += j.computadores.length;
+          $('pc-more').style.display =
+            pcOffset < j.total ? 'inline-flex' : 'none';
+
+          tb.querySelectorAll('[data-pc-edit]').forEach((b) => {
+            b.onclick = () => fillPcForm(parseInt(b.getAttribute('data-pc-edit'), 10));
+          });
+          tb.querySelectorAll('[data-pc-del]').forEach((b) => {
+            b.onclick = async () => {
+              const id = b.getAttribute('data-pc-del');
+              if (!confirm('Excluir computador ' + id + ' e auditoria vinculada?')) return;
+              const res = await fetch('/api/admin/computador/' + id, {
+                method: 'DELETE',
+                headers: apiHeaders(),
+              });
+              if (!res.ok) {
+                alert('Falha ao excluir');
+                return;
+              }
+              loadPc(true);
+              loadRelatorio().then(renderRep).catch(() => {});
+            };
+          });
+        }
+
+        async function fillPcForm(id) {
+          const r = await fetch('/api/admin/computador/' + id, { headers: apiHeaders() });
+          if (!r.ok) return;
+          const j = await r.json();
+          if (j.computador) applyPcForm(j.computador);
+        }
+
+        function applyPcForm(c) {
+          $('pc-edit-id').value = String(c.id);
+          $('pc-f-nome').value = c.nome_maquina || '';
+          $('pc-f-pat').value = c.patrimonio || '';
+          $('pc-f-loc').value = c.localizacao || '';
+          $('pc-f-ad').value = c.status_ad || '';
+          $('pc-f-sec').value = String(c.secretaria_id);
+        }
+
+        function clearPcForm() {
+          $('pc-edit-id').value = '';
+          $('pc-f-nome').value = '';
+          $('pc-f-pat').value = '';
+          $('pc-f-loc').value = '';
+          $('pc-f-ad').value = '';
+          $('pc-f-sec').selectedIndex = 0;
+        }
+
+        let monOffset = 0;
+        const monLimit = 100;
+
+        async function loadMon(reset) {
+          if (reset) {
+            monOffset = 0;
+            $('table-mon').querySelector('tbody').innerHTML = '';
+          }
+          const sid = $('mon-filter-sec').value;
+          const q = $('mon-q').value.trim();
+          let url =
+            '/api/admin/monitores?limit=' +
+            monLimit +
+            '&offset=' +
+            monOffset;
+          if (sid) url += '&secretaria_id=' + encodeURIComponent(sid);
+          if (q) url += '&q=' + encodeURIComponent(q);
+          const r = await fetch(url, { headers: apiHeaders() });
+          if (!r.ok) {
+            alert('Erro ao carregar monitores');
+            return;
+          }
+          const j = await r.json();
+          $('mon-list-meta').textContent =
+            'Mostrando ' +
+            (monOffset + j.monitores.length) +
+            ' de ' +
+            j.total;
+          const tb = $('table-mon').querySelector('tbody');
+          j.monitores.forEach((m) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              '<td>' +
+              m.id +
+              '</td><td>' +
+              escapeHtml(m.patrimonio || '') +
+              '</td><td>' +
+              escapeHtml(m.modelo || '') +
+              '</td><td>' +
+              escapeHtml(m.secretaria_nome || '') +
+              '</td><td><div class="btn-row-inline"><button type="button" class="btn btn-ghost btn-sm" data-mon-edit="' +
+              m.id +
+              '">Editar</button><button type="button" class="btn btn-danger btn-sm" data-mon-del="' +
+              m.id +
+              '">Excluir</button></div></td>';
+            tb.appendChild(tr);
+          });
+          monOffset += j.monitores.length;
+          $('mon-more').style.display =
+            monOffset < j.total ? 'inline-flex' : 'none';
+
+          tb.querySelectorAll('[data-mon-edit]').forEach((b) => {
+            b.onclick = () => loadMonOne(parseInt(b.getAttribute('data-mon-edit'), 10));
+          });
+          tb.querySelectorAll('[data-mon-del]').forEach((b) => {
+            b.onclick = async () => {
+              const id = b.getAttribute('data-mon-del');
+              if (!confirm('Excluir monitor ' + id + '?')) return;
+              const res = await fetch('/api/admin/monitor/' + id, {
+                method: 'DELETE',
+                headers: apiHeaders(),
+              });
+              if (!res.ok) {
+                alert('Falha ao excluir');
+                return;
+              }
+              loadMon(true);
+              loadRelatorio().then(renderRep).catch(() => {});
+            };
+          });
+        }
+
+        async function loadMonOne(id) {
+          const r = await fetch('/api/admin/monitor/' + id, { headers: apiHeaders() });
+          if (!r.ok) return;
+          const j = await r.json();
+          const m = j.monitor;
+          if (!m) return;
+          $('mon-edit-id').value = String(m.id);
+          $('mon-f-pat').value = m.patrimonio || '';
+          $('mon-f-mod').value = m.modelo || '';
+          $('mon-f-sec').value = String(m.secretaria_id);
+        }
+
+        function clearMonForm() {
+          $('mon-edit-id').value = '';
+          $('mon-f-pat').value = '';
+          $('mon-f-mod').value = '';
+          $('mon-f-sec').selectedIndex = 0;
+        }
+
+        function switchTab(tab) {
+          document.querySelectorAll('.admin-nav button').forEach((b) => {
+            b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+          });
+          document.querySelectorAll('.admin-section').forEach((s) => {
+            s.classList.remove('active');
+          });
+          if (tab === 'rep') $('tab-rep').classList.add('active');
+          if (tab === 'acc') {
+            $('tab-acc').classList.add('active');
+            loadSecretariasLinks();
+          }
+          if (tab === 'pc') {
+            $('tab-pc').classList.add('active');
+            loadPc(true);
+          }
+          if (tab === 'mon') {
+            $('tab-mon').classList.add('active');
+            loadMon(true);
+          }
+        }
+
+        document.querySelectorAll('.admin-nav button').forEach((b) => {
+          b.onclick = () => switchTab(b.getAttribute('data-tab'));
+        });
 
         $('btn-admin-go').onclick = async () => {
           const pwd = $('admin-senha').value;
           showErr($('admin-err'), '');
           if (!pwd) return showErr($('admin-err'), 'Informe a senha.');
           try {
-            const data = await loadRelatorio(pwd);
-            if (!data.ok) throw new Error('Resposta inválida');
             localStorage.setItem(STORAGE_KEY, pwd);
-            renderDash(data);
+            const data = await loadRelatorio();
+            if (!data.ok) throw new Error('Resposta inválida');
+            await loadSecretariasOpcoes();
+            renderRep(data);
             showDash();
+            switchTab('rep');
           } catch {
+            localStorage.removeItem(STORAGE_KEY);
             showErr($('admin-err'), 'Senha inválida ou erro de rede.');
           }
         };
 
         $('btn-export').onclick = async () => {
-          const pwd = localStorage.getItem(STORAGE_KEY);
+          const pwd = getPwd();
           if (!pwd) return showLogin();
           const r = await fetch('/api/export?adminSenha=' + encodeURIComponent(pwd));
           if (!r.ok) {
@@ -157,14 +632,96 @@
 
         $('btn-admin-sair').onclick = showLogin;
 
+        $('pc-search').onclick = () => loadPc(true);
+        $('pc-more').onclick = () => loadPc(false);
+        $('pc-new-clear').onclick = clearPcForm;
+        $('pc-save').onclick = async () => {
+          const sid = parseInt($('pc-f-sec').value, 10);
+          if (!sid) {
+            alert('Escolha a secretaria.');
+            return;
+          }
+          const body = {
+            nome_maquina: $('pc-f-nome').value || null,
+            patrimonio: $('pc-f-pat').value || null,
+            localizacao: $('pc-f-loc').value || null,
+            status_ad: $('pc-f-ad').value || null,
+            secretaria_id: sid,
+          };
+          const eid = $('pc-edit-id').value;
+          let res;
+          if (eid) {
+            res = await fetch('/api/admin/computador/' + eid, {
+              method: 'PATCH',
+              headers: apiHeaders(),
+              body: JSON.stringify(body),
+            });
+          } else {
+            res = await fetch('/api/admin/computador', {
+              method: 'POST',
+              headers: apiHeaders(),
+              body: JSON.stringify(body),
+            });
+          }
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok || !out.ok) {
+            alert(out.error || 'Falha ao salvar');
+            return;
+          }
+          clearPcForm();
+          loadPc(true);
+          loadRelatorio().then(renderRep).catch(() => {});
+        };
+
+        $('mon-search').onclick = () => loadMon(true);
+        $('mon-more').onclick = () => loadMon(false);
+        $('mon-new-clear').onclick = clearMonForm;
+        $('mon-save').onclick = async () => {
+          const sid = parseInt($('mon-f-sec').value, 10);
+          if (!sid) {
+            alert('Escolha a secretaria.');
+            return;
+          }
+          const body = {
+            patrimonio: $('mon-f-pat').value || null,
+            modelo: $('mon-f-mod').value || null,
+            secretaria_id: sid,
+          };
+          const eid = $('mon-edit-id').value;
+          let res;
+          if (eid) {
+            res = await fetch('/api/admin/monitor/' + eid, {
+              method: 'PATCH',
+              headers: apiHeaders(),
+              body: JSON.stringify(body),
+            });
+          } else {
+            res = await fetch('/api/admin/monitor', {
+              method: 'POST',
+              headers: apiHeaders(),
+              body: JSON.stringify(body),
+            });
+          }
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok || !out.ok) {
+            alert(out.error || 'Falha ao salvar');
+            return;
+          }
+          clearMonForm();
+          loadMon(true);
+          loadRelatorio().then(renderRep).catch(() => {});
+        };
+
         (async function init() {
-          const saved = localStorage.getItem(STORAGE_KEY);
+          const saved = getPwd();
           if (saved) {
             try {
-              const data = await loadRelatorio(saved);
+              const data = await loadRelatorio();
               if (data.ok) {
-                renderDash(data);
+                await loadSecretariasOpcoes();
+                renderRep(data);
                 showDash();
+                switchTab('rep');
                 return;
               }
             } catch (_) {}
