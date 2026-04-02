@@ -1,6 +1,7 @@
 (function () {
   const TOKEN_KEY = 'inv_token_url';
   const SENHA_KEY = 'inv_senha';
+  const SEC_OPCOES_KEY = 'inv_secretarias_opcao';
 
   function normToken(t) {
     if (t == null) return null;
@@ -47,6 +48,66 @@
   function clearAuth() {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(SENHA_KEY);
+    sessionStorage.removeItem(SEC_OPCOES_KEY);
+  }
+
+  function guardarOpcoesSecretarias(list) {
+    try {
+      sessionStorage.setItem(
+        SEC_OPCOES_KEY,
+        JSON.stringify(Array.isArray(list) ? list : [])
+      );
+    } catch (_) {
+      /* ignora quota */
+    }
+  }
+
+  function lerOpcoesSecretarias() {
+    try {
+      const raw = sessionStorage.getItem(SEC_OPCOES_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function populateFiltroSecretaria() {
+    const wrap = $('inv-wrap-filtro-secretaria');
+    const sel = $('inv-filtro-secretaria');
+    if (!wrap || !sel) return;
+    const list = lerOpcoesSecretarias();
+    const cur = normToken(tokenFromUrl);
+    if (list.length <= 1) {
+      wrap.hidden = true;
+      sel.innerHTML = '';
+      return;
+    }
+    wrap.hidden = false;
+    sel.innerHTML = '';
+    for (const s of list) {
+      const t = normToken(s.token);
+      if (!t) continue;
+      const o = document.createElement('option');
+      o.value = t;
+      o.textContent = s.nome || t;
+      sel.appendChild(o);
+    }
+    const match = [...sel.options].some((o) => normToken(o.value) === cur);
+    if (match) sel.value = cur || sel.options[0].value;
+    else if (sel.options[0]) sel.selectedIndex = 0;
+  }
+
+  function onTrocarSecretaria() {
+    const sel = $('inv-filtro-secretaria');
+    if (!sel) return;
+    const newTok = normToken(sel.value);
+    if (!newTok || newTok === normToken(tokenFromUrl)) return;
+    const senha = sessionStorage.getItem(SENHA_KEY) || '';
+    if (!senha.trim()) return;
+    setAuth(newTok, senha);
+    window.location.href =
+      '/inventario/' + encodeURIComponent(newTok);
   }
 
   async function apiAuditoria(body) {
@@ -1201,11 +1262,17 @@
     });
   }
 
+  const filtroSecEl = $('inv-filtro-secretaria');
+  if (filtroSecEl) {
+    filtroSecEl.addEventListener('change', () => onTrocarSecretaria());
+  }
+
   async function afterLogin() {
     showErr('list-err', '');
     monitorOptsCache = [];
     try {
       await refreshData();
+      populateFiltroSecretaria();
       showScreen('screen-list');
     } catch (e) {
       clearAuth();
@@ -1234,6 +1301,7 @@
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || 'Login inválido');
       setAuth(tokenFromUrl, senha);
+      guardarOpcoesSecretarias(j.secretarias_mesma_senha);
       await afterLogin();
     } catch (e) {
       showErr('login-err', e.message);

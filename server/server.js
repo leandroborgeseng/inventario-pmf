@@ -372,9 +372,22 @@ app.post('/api/login-token', async (req, res) => {
       });
     }
     loginFailLimiter.recordSuccess(ip);
+    const senhaNorm = senha == null ? '' : String(senha).trim();
+    const comMesmaSenha = await dbAll(
+      `SELECT token, nome FROM secretarias
+       WHERE TRIM(COALESCE(senha, '')) = TRIM(?)
+       ORDER BY nome COLLATE NOCASE`,
+      [senhaNorm]
+    );
+    const secretarias_mesma_senha = comMesmaSenha.map((r) => ({
+      token: r.token,
+      nome: r.nome,
+    }));
+
     res.json({
       ok: true,
       secretaria: { id: s.id, nome: s.nome },
+      secretarias_mesma_senha,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

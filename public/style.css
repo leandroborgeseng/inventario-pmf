@@ -663,6 +663,12 @@ select.field-sm {
   line-height: 1.35;
 }
 
+.inv-filtro-sec-wrap {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(139, 154, 173, 0.25);
+}
+
 .inv-filtros-card .inv-filtro-busca-lbl {
   margin-top: 0.15rem;
 }
