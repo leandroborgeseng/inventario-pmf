@@ -113,6 +113,10 @@
                 <label class="field" for="pc-f-ad">Status AD</label>
                 <input id="pc-f-ad" class="field-sm" type="text" />
               </div>
+              <div>
+                <label class="field" for="pc-f-aquisicao">Data de aquisição</label>
+                <input id="pc-f-aquisicao" class="field-sm" type="date" />
+              </div>
               <div style="grid-column: 1 / -1">
                 <label class="field" for="pc-f-sec">Secretaria</label>
                 <select id="pc-f-sec" class="field-sm"></select>
@@ -131,6 +135,7 @@
                   <th>ID</th>
                   <th>Nome</th>
                   <th>Pat.</th>
+                  <th>Idade (aquis.)</th>
                   <th>Secretaria</th>
                   <th>Aud.</th>
                   <th></th>
@@ -450,6 +455,8 @@
               '</td><td>' +
               escapeHtml(c.patrimonio || '') +
               '</td><td>' +
+              escapeHtml(c.idade_aquisicao || '—') +
+              '</td><td>' +
               escapeHtml(c.secretaria_nome || '') +
               '</td><td>' +
               escapeHtml(c.auditoria_status || '—') +
@@ -498,6 +505,9 @@
           $('pc-f-pat').value = c.patrimonio || '';
           $('pc-f-loc').value = c.localizacao || '';
           $('pc-f-ad').value = c.status_ad || '';
+          $('pc-f-aquisicao').value = c.data_aquisicao
+            ? String(c.data_aquisicao).slice(0, 10)
+            : '';
           $('pc-f-sec').value = String(c.secretaria_id);
         }
 
@@ -507,6 +517,7 @@
           $('pc-f-pat').value = '';
           $('pc-f-loc').value = '';
           $('pc-f-ad').value = '';
+          $('pc-f-aquisicao').value = '';
           $('pc-f-sec').selectedIndex = 0;
         }
 
@@ -736,6 +747,7 @@
             patrimonio: $('pc-f-pat').value || null,
             localizacao: $('pc-f-loc').value || null,
             status_ad: $('pc-f-ad').value || null,
+            data_aquisicao: $('pc-f-aquisicao').value || null,
             secretaria_id: sid,
           };
           const eid = $('pc-edit-id').value;

@@ -76,6 +76,48 @@ function pickRow(row, aliases) {
   return '';
 }
 
+/** Normaliza data de aquisição da planilha para YYYY-MM-DD ou null. */
+function parseDataAquisicaoVal(raw) {
+  if (raw == null || raw === '') return null;
+  if (raw instanceof Date && !isNaN(+raw))
+    return raw.toISOString().slice(0, 10);
+  if (typeof raw === 'number' && isFinite(raw)) {
+    if (raw > 20000 && raw < 1000000) {
+      try {
+        const dc = XLSX.SSF && XLSX.SSF.parse_date_code(raw);
+        if (dc && dc.y >= 1900 && dc.y <= 2100) {
+          const mm = String(dc.m).padStart(2, '0');
+          const dd = String(dc.d).padStart(2, '0');
+          return `${dc.y}-${mm}-${dd}`;
+        }
+      } catch (_) {
+        /* continua */
+      }
+      const epochMs = Date.UTC(1899, 11, 30);
+      const ms = epochMs + Math.floor(raw) * 86400000;
+      const dt = new Date(ms);
+      if (!isNaN(dt.getTime()) && dt.getUTCFullYear() >= 1900)
+        return dt.toISOString().slice(0, 10);
+    }
+  }
+  const s = String(raw).trim();
+  if (!s) return null;
+  const br = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
+  if (br) {
+    const day = parseInt(br[1], 10);
+    const month = parseInt(br[2], 10);
+    let year = parseInt(br[3], 10);
+    if (year < 100) year += 2000;
+    const dt = new Date(year, month - 1, day);
+    if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+  }
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const tryDt = new Date(s);
+  if (!isNaN(tryDt.getTime())) return tryDt.toISOString().slice(0, 10);
+  return null;
+}
+
 function sheetToJson(filePath) {
   if (!fs.existsSync(filePath)) {
     console.error('Arquivo não encontrado:', filePath);
@@ -377,6 +419,22 @@ async function main() {
     'mais_de_10_anos',
     'mais de 10 anos',
   ];
+  const aliasDataAquisicao = [
+    'data_aquisicao',
+    'data aquisicao',
+    'data aquisição',
+    'dt_aquisicao',
+    'dt aquisicao',
+    'dt aquisição',
+    'dt_aquisição',
+    'dt. aquisicao',
+    'dt. aquisição',
+    'data_de_aquisicao',
+    'data de aquisicao',
+    'data de aquisição',
+    'dt aquis',
+    'dtaquisicao',
+  ];
 
   let nPc = 0;
   let nPcSkip = 0;
@@ -392,12 +450,23 @@ async function main() {
     const patrimonio = pickRow(r, aliasPat);
     const localizacao = pickRow(r, aliasLoc);
     const status_ad = pickRow(r, aliasAd);
+    const dataRaw = pickRow(r, aliasDataAquisicao);
+    const data_aquisicao = dataRaw
+      ? parseDataAquisicaoVal(dataRaw)
+      : null;
 
     await dbRun(
       db,
-      `INSERT INTO computadores (nome_maquina, patrimonio, secretaria_id, localizacao, status_ad)
-       VALUES (?, ?, ?, ?, ?)`,
-      [nome_maquina || null, patrimonio || null, sec.id, localizacao || null, status_ad || null]
+      `INSERT INTO computadores (nome_maquina, patrimonio, secretaria_id, localizacao, status_ad, data_aquisicao)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        nome_maquina || null,
+        patrimonio || null,
+        sec.id,
+        localizacao || null,
+        status_ad || null,
+        data_aquisicao || null,
+      ]
     );
     nPc++;
   }

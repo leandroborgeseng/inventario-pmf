@@ -142,6 +142,25 @@
       .toUpperCase();
   }
 
+  function formatarDataBR(iso) {
+    if (!iso || typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso))
+      return '';
+    const [y, m, d] = iso.slice(0, 10).split('-');
+    return d + '/' + m + '/' + y;
+  }
+
+  function metaIdadeHtml(c) {
+    if (!c.idade_aquisicao && !c.data_aquisicao) return '';
+    let t = '<p class="meta">Idade (aquisição): ';
+    if (c.idade_aquisicao)
+      t += '<strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
+    if (c.data_aquisicao) {
+      const br = formatarDataBR(c.data_aquisicao);
+      if (br) t += ' · ' + escapeHtml(br);
+    }
+    return t + '</p>';
+  }
+
   let detailNomePrimeiroFoco = false;
   let ajusteNomePrimeiroFoco = false;
 
@@ -246,6 +265,7 @@
         escapeHtml(c.localizacao || '—') +
         '</p>' +
         (c.status_ad ? '<p class="meta">AD: ' + escapeHtml(c.status_ad) + '</p>' : '') +
+        metaIdadeHtml(c) +
         badgeHtml(audit) +
         (quick
           ? '<div class="pc-actions-mini">' +
@@ -279,11 +299,22 @@
     showErr('detail-err', '');
     const pat = c.patrimonio || '—';
     const loc = c.localizacao || '—';
-    $('detail-resumo').innerHTML =
+    let resumo =
       'Patrimônio <strong>' +
       escapeHtml(pat) +
       '</strong> · Local: ' +
       escapeHtml(loc);
+    if (c.idade_aquisicao || c.data_aquisicao) {
+      resumo += '<br><span class="meta">Idade (aquisição): ';
+      if (c.idade_aquisicao)
+        resumo += '<strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
+      if (c.data_aquisicao) {
+        const br = formatarDataBR(c.data_aquisicao);
+        if (br) resumo += ' · ' + escapeHtml(br);
+      }
+      resumo += '</span>';
+    }
+    $('detail-resumo').innerHTML = resumo;
 
     $('detail-nome').value = c.nome_maquina || '';
     detailNomePrimeiroFoco = true;
@@ -411,11 +442,22 @@
     ajusteNomePc = c;
     showErr('nome-ajuste-err', '');
     const pat = c.patrimonio || '—';
-    $('nome-ajuste-sub').innerHTML =
+    let sub =
       'Patrimônio <strong>' +
       escapeHtml(pat) +
       '</strong> · Local: ' +
       escapeHtml(c.localizacao || '—');
+    if (c.idade_aquisicao || c.data_aquisicao) {
+      sub += '<br><span class="muted">Idade (aquisição): ';
+      if (c.idade_aquisicao)
+        sub += '<strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
+      if (c.data_aquisicao) {
+        const br = formatarDataBR(c.data_aquisicao);
+        if (br) sub += ' · ' + escapeHtml(br);
+      }
+      sub += '</span>';
+    }
+    $('nome-ajuste-sub').innerHTML = sub;
     $('nome-ajuste-input').value = c.nome_maquina || '';
     ajusteNomePrimeiroFoco = true;
     showScreen('screen-ajuste-nome');

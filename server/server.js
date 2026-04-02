@@ -17,6 +17,7 @@ const {
   isRailwayLike,
 } = require('./db-config');
 const { createFailLimiter } = require('./fail-limiter');
+const { idadeAquisicaoDeISO } = require('./idade-aquisicao');
 const DB_PATH = resolveDbPath();
 process.env.DB_PATH = DB_PATH;
 logDbPersistenceAndMaybeExit(DB_PATH);
@@ -131,6 +132,14 @@ function normalizeNomeMaquinaValor(raw) {
     .replace(/\p{M}/gu, '')
     .replace(/[^A-Za-z0-9]/g, '')
     .toUpperCase();
+}
+
+/** data_aquisicao: aceita YYYY-MM-DD ou vazio (admin). */
+function normalizeDataAquisicaoInput(raw) {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return s;
 }
 
 function validateAdmin(req) {
@@ -307,6 +316,7 @@ app.get('/api/computadores/:token', async (req, res) => {
 
     const rows = await dbAll(
       `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
+              c.data_aquisicao,
               a.id AS auditoria_id, a.confirmado AS audit_confirmado,
               a.observacao AS audit_observacao, a.data AS audit_data
        FROM computadores c
@@ -322,6 +332,10 @@ app.get('/api/computadores/:token', async (req, res) => {
       patrimonio: r.patrimonio,
       localizacao: r.localizacao,
       status_ad: r.status_ad,
+      data_aquisicao: r.data_aquisicao || null,
+      idade_aquisicao: r.data_aquisicao
+        ? idadeAquisicaoDeISO(r.data_aquisicao) || null
+        : null,
       auditoria: r.auditoria_id
         ? {
             id: r.auditoria_id,
@@ -695,6 +709,7 @@ app.get('/api/admin/computador/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const r = await dbGet(
       `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
+              c.data_aquisicao,
               c.secretaria_id, s.nome AS secretaria_nome,
               COALESCE(a.confirmado, '') AS audit_status
        FROM computadores c
@@ -712,6 +727,10 @@ app.get('/api/admin/computador/:id', async (req, res) => {
         patrimonio: r.patrimonio,
         localizacao: r.localizacao,
         status_ad: r.status_ad,
+        data_aquisicao: r.data_aquisicao || null,
+        idade_aquisicao: r.data_aquisicao
+          ? idadeAquisicaoDeISO(r.data_aquisicao) || null
+          : null,
         secretaria_id: r.secretaria_id,
         secretaria_nome: r.secretaria_nome,
         auditoria_status: r.audit_status || null,
@@ -767,6 +786,7 @@ app.get('/api/admin/computadores', async (req, res) => {
     params.push(limit, offset);
     const rows = await dbAll(
       `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
+              c.data_aquisicao,
               c.secretaria_id, s.nome AS secretaria_nome,
               COALESCE(a.confirmado, '') AS audit_status
        FROM computadores c
@@ -789,6 +809,10 @@ app.get('/api/admin/computadores', async (req, res) => {
         patrimonio: r.patrimonio,
         localizacao: r.localizacao,
         status_ad: r.status_ad,
+        data_aquisicao: r.data_aquisicao || null,
+        idade_aquisicao: r.data_aquisicao
+          ? idadeAquisicaoDeISO(r.data_aquisicao) || null
+          : null,
         secretaria_id: r.secretaria_id,
         secretaria_nome: r.secretaria_nome,
         auditoria_status: r.audit_status || null,
@@ -867,15 +891,17 @@ app.post('/api/admin/computador', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'secretaria_id obrigatório' });
     const ex = await dbGet('SELECT id FROM secretarias WHERE id = ?', [sid]);
     if (!ex) return res.status(400).json({ ok: false, error: 'Secretaria inválida' });
+    const daIns = normalizeDataAquisicaoInput(b.data_aquisicao);
     const r = await dbRun(
-      `INSERT INTO computadores (nome_maquina, patrimonio, secretaria_id, localizacao, status_ad)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO computadores (nome_maquina, patrimonio, secretaria_id, localizacao, status_ad, data_aquisicao)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         b.nome_maquina || null,
         b.patrimonio || null,
         sid,
         b.localizacao || null,
         b.status_ad || null,
+        daIns,
       ]
     );
     res.json({ ok: true, id: r.lastID });
@@ -911,11 +937,17 @@ app.patch('/api/admin/computador/:id', async (req, res) => {
       b.localizacao !== undefined ? b.localizacao : pc.localizacao;
     const ad =
       b.status_ad !== undefined ? b.status_ad : pc.status_ad;
+    let da = pc.data_aquisicao;
+    if (Object.prototype.hasOwnProperty.call(b, 'data_aquisicao')) {
+      const v = b.data_aquisicao;
+      if (v === null || v === '') da = null;
+      else da = normalizeDataAquisicaoInput(v);
+    }
 
     await dbRun(
       `UPDATE computadores SET nome_maquina = ?, patrimonio = ?, secretaria_id = ?,
-         localizacao = ?, status_ad = ? WHERE id = ?`,
-      [nome, pat, sid, loc, ad, id]
+         localizacao = ?, status_ad = ?, data_aquisicao = ? WHERE id = ?`,
+      [nome, pat, sid, loc, ad, da, id]
     );
     if (
       b.secretaria_id !== undefined &&
@@ -1081,6 +1113,7 @@ app.get('/api/export', async (req, res) => {
 
     const rows = await dbAll(
       `SELECT c.nome_maquina, c.patrimonio AS pc_patrimonio, c.localizacao,
+              c.data_aquisicao,
               s.nome AS secretaria,
               COALESCE(a.confirmado, 'pendente') AS status,
               a.observacao,
@@ -1131,6 +1164,8 @@ app.get('/api/export', async (req, res) => {
       computador: r.nome_maquina || '',
       patrimonio_pc: r.pc_patrimonio || '',
       localizacao: r.localizacao || '',
+      data_aquisicao: r.data_aquisicao || '',
+      idade_aquisicao: idadeAquisicaoDeISO(r.data_aquisicao) || '',
       secretaria: r.secretaria,
       status: r.status,
       observacao: r.observacao || '',
@@ -1248,22 +1283,37 @@ function startServer() {
         console.error('Erro ao aplicar schema:', err.message);
         process.exit(1);
       }
-      const pub = resolveStaticPublicUrl();
-      if (pub) console.log('[app] URL pública (env):', pub);
-      else
-        console.log(
-          '[app] Defina PUBLIC_URL ou PUBLIC_BASE_URL no Railway para links fixos no admin.'
-        );
+      (async () => {
+        try {
+          const cols = await dbAll(`PRAGMA table_info(computadores)`);
+          if (!cols.some((c) => c.name === 'data_aquisicao')) {
+            await dbRun(
+              'ALTER TABLE computadores ADD COLUMN data_aquisicao TEXT'
+            );
+            console.log('[db] Coluna computadores.data_aquisicao adicionada.');
+          }
+        } catch (e) {
+          console.error('[db] Migração:', e.message);
+          process.exit(1);
+        }
 
-      app.listen(PORT, () => {
-        console.log(`Servidor ouvindo na porta ${PORT}`);
-        console.log('[app] Health check: GET /api/health');
-        setImmediate(() => {
-          maybeAutoImportFromExcel().catch((e) =>
-            console.error('[import] Erro no import automático:', e)
+        const pub = resolveStaticPublicUrl();
+        if (pub) console.log('[app] URL pública (env):', pub);
+        else
+          console.log(
+            '[app] Defina PUBLIC_URL ou PUBLIC_BASE_URL no Railway para links fixos no admin.'
           );
+
+        app.listen(PORT, () => {
+          console.log(`Servidor ouvindo na porta ${PORT}`);
+          console.log('[app] Health check: GET /api/health');
+          setImmediate(() => {
+            maybeAutoImportFromExcel().catch((e) =>
+              console.error('[import] Erro no import automático:', e)
+            );
+          });
         });
-      });
+      })();
     });
   });
 }

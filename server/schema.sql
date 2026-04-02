@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS computadores (
   secretaria_id INTEGER NOT NULL,
   localizacao TEXT,
   status_ad TEXT,
+  data_aquisicao TEXT,
   FOREIGN KEY (secretaria_id) REFERENCES secretarias(id)
 );
 

@@ -18,7 +18,7 @@ npm run import
 
 ### Formato esperado (PMF / patrimônio)
 
-- **Computadores:** primeira aba com cabeçalho na linha que contém **Placa** e **Bem Patrimonial** (linhas iniciais com fórmulas são ignoradas). Colunas usadas: **Placa** (patrimônio), **Bem Patrimonial** (nome do bem), **Setor** (localização), **Secretária** (obrigatória — não use a coluna Setor como secretaria), **MAIS DE 10 ANOS** / **Dt. Aquisição** quando existirem.
+- **Computadores:** primeira aba com cabeçalho na linha que contém **Placa** e **Bem Patrimonial** (linhas iniciais com fórmulas são ignoradas). Colunas usadas: **Placa** (patrimônio), **Bem Patrimonial** (nome do bem), **Setor** (localização), **Secretária** (obrigatória — não use a coluna Setor como secretaria), **MAIS DE 10 ANOS** / **Dt. Aquisição** (ou **Data aquisição**, **dt aquisição**, etc.) — gravada como `data_aquisicao` e usada na vistoria para mostrar **idade do equipamento**.
 - **Monitores:** coluna **Secretaria** pode estar vazia; o import infere a secretaria pelo texto de **Setor** (palavras-chave: SAÚDE, EDUCAÇÃO, RH, etc.). Códigos numéricos isolados (ex.: `20500`) são mapeados em `server/codigo-monitores.json` — **revise** com a TI se os totais por secretaria não baterem.
 
 ## Railway (produção)
