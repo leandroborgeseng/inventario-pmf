@@ -412,22 +412,6 @@ app.get('/api/computadores/:token', async (req, res) => {
       [s.id]
     );
 
-    const list = rows.map((r) => ({
-      id: r.id,
-      nome_maquina: r.nome_maquina,
-      patrimonio: r.patrimonio,
-      localizacao: r.localizacao,
-      status_ad: r.status_ad,
-      auditoria: r.auditoria_id
-        ? {
-            id: r.auditoria_id,
-            confirmado: r.audit_confirmado,
-            observacao: r.audit_observacao,
-            data: r.audit_data,
-          }
-        : null,
-    }));
-
     const mCount = await dbGet(
       'SELECT COUNT(*) AS c FROM monitores WHERE secretaria_id = ?',
       [s.id]
@@ -465,12 +449,64 @@ app.get('/api/computadores/:token', async (req, res) => {
       a.localeCompare(b, 'pt', { sensitivity: 'base' })
     );
 
+    const tem_pc_sem_local = rows.some(
+      (r) => !String(r.localizacao || '').trim()
+    );
+
+    const localRawSingle = req.query.local;
+    const localRaw = Array.isArray(localRawSingle)
+      ? localRawSingle[0]
+      : localRawSingle;
+    const hasLocal =
+      localRaw != null &&
+      String(localRaw).trim() !== '' &&
+      String(localRaw).trim() !== 'undefined';
+    const localFilter = hasLocal ? String(localRaw).trim() : '';
+    const qBusca = String(req.query.q || '').trim();
+
+    const semLocalToken = '__sem_local__';
+    let listRows = rows;
+    if (localFilter) {
+      listRows = listRows.filter((r) => {
+        const mloc = String(r.localizacao || '').trim();
+        if (localFilter === semLocalToken) return !mloc;
+        return mloc === localFilter;
+      });
+    }
+    if (qBusca) {
+      const ql = qBusca.toLowerCase();
+      listRows = listRows.filter((r) =>
+        [r.nome_maquina, r.patrimonio, r.localizacao].some((x) =>
+          String(x || '')
+            .toLowerCase()
+            .includes(ql)
+        )
+      );
+    }
+
+    const listFiltered = listRows.map((r) => ({
+      id: r.id,
+      nome_maquina: r.nome_maquina,
+      patrimonio: r.patrimonio,
+      localizacao: r.localizacao,
+      status_ad: r.status_ad,
+      auditoria: r.auditoria_id
+        ? {
+            id: r.auditoria_id,
+            confirmado: r.audit_confirmado,
+            observacao: r.audit_observacao,
+            data: r.audit_data,
+          }
+        : null,
+    }));
+
     res.json({
       ok: true,
       secretaria: { nome: s.nome },
       resumo,
       locais_filtro,
-      computadores: list,
+      tem_pc_sem_local,
+      computadores: listFiltered,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -633,6 +669,22 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
       });
     }
 
+    const qBuscaPainel = String(req.query.q || '').trim();
+    if (qBuscaPainel) {
+      const ql = qBuscaPainel.toLowerCase();
+      list = list.filter((item) => {
+        const v = item.vinculo;
+        return [
+          item.patrimonio,
+          item.modelo,
+          item.localizacao,
+          v && v.nome_maquina,
+          v && v.pc_patrimonio,
+          v && v.localizacao,
+        ].some((x) => String(x || '').toLowerCase().includes(ql));
+      });
+    }
+
     res.json({
       ok: true,
       filtro_local: localFilter || null,
@@ -711,7 +763,7 @@ app.get('/api/relatorio-vistoria/:token', async (req, res) => {
       }
     }
 
-    const itens = filtered.map((p) => ({
+    let itens = filtered.map((p) => ({
       computador_id: p.id,
       nome_maquina: p.nome_maquina,
       patrimonio: p.patrimonio,
@@ -721,6 +773,18 @@ app.get('/api/relatorio-vistoria/:token', async (req, res) => {
       data_auditoria: p.audit_data,
       monitores: monByAud.get(p.auditoria_id) || [],
     }));
+
+    const qBuscaRel = String(req.query.q || '').trim();
+    if (qBuscaRel) {
+      const ql = qBuscaRel.toLowerCase();
+      itens = itens.filter((it) => {
+        const parts = [it.nome_maquina, it.patrimonio, it.localizacao];
+        for (const m of it.monitores || []) {
+          parts.push(m.patrimonio, m.modelo, m.localizacao);
+        }
+        return parts.some((x) => String(x || '').toLowerCase().includes(ql));
+      });
+    }
 
     res.json({
       ok: true,

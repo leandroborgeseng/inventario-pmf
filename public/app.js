@@ -227,20 +227,53 @@
 
   async function loadComputadores() {
     const { token, senha } = getAuth();
-    const r = await fetch('/api/computadores/' + encodeURIComponent(token), {
-      headers: { 'X-Senha': senha },
-    });
+    const loc = valorFiltroLocal();
+    const qRaw = ($('inv-busca') && $('inv-busca').value) || '';
+    const qs = [];
+    if (loc) qs.push('local=' + encodeURIComponent(loc));
+    if (String(qRaw).trim())
+      qs.push('q=' + encodeURIComponent(String(qRaw).trim()));
+    const qstr = qs.length ? '?' + qs.join('&') : '';
+    const r = await fetch(
+      '/api/computadores/' + encodeURIComponent(token) + qstr,
+      { headers: { 'X-Senha': senha } }
+    );
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Não autorizado');
     return j;
   }
 
+  function valorBuscaParaApi() {
+    const scrMon = $('screen-monitores-painel');
+    if (scrMon && scrMon.classList.contains('active')) {
+      const b = $('inv-busca-mon') || $('inv-busca');
+      return b ? b.value || '' : '';
+    }
+    const scrRel = $('screen-relatorio-vistoria');
+    if (scrRel && scrRel.classList.contains('active')) {
+      const b = $('inv-busca-rel') || $('inv-busca');
+      return b ? b.value || '' : '';
+    }
+    const m = $('inv-busca');
+    return m ? m.value || '' : '';
+  }
+
+  function invQueryLocalQ() {
+    const p = new URLSearchParams();
+    const loc = valorFiltroLocalParaApi();
+    if (loc) p.set('local', loc);
+    const qb = valorBuscaParaApi();
+    if (String(qb).trim()) p.set('q', String(qb).trim());
+    const s = p.toString();
+    return s ? '?' + s : '';
+  }
+
   async function apiMonitoresPainel() {
     const { token, senha } = getAuth();
-    const loc = valorFiltroLocalParaApi();
-    const q = loc ? '?local=' + encodeURIComponent(loc) : '';
     const r = await fetch(
-      '/api/monitores-painel/' + encodeURIComponent(token) + q,
+      '/api/monitores-painel/' +
+        encodeURIComponent(token) +
+        invQueryLocalQ(),
       { headers: { 'X-Senha': senha } }
     );
     const j = await r.json();
@@ -275,27 +308,15 @@
       const opt = selLocMon.options[selLocMon.selectedIndex];
       return opt ? opt.textContent.trim() : '';
     })();
-    const buscaMon = $('inv-busca-mon') || $('inv-busca');
-    const qBusca = (buscaMon && buscaMon.value) || '';
-    const rawItems = data.monitores || [];
-    const items = rawItems.filter((it) => matchesBuscaMonitor(it, qBusca));
+    const items = data.monitores || [];
 
     if (sub) {
-      let subMsg =
+      sub.textContent =
         (secretariaNome || 'Secretaria') +
         ' · ' +
-        (!rawItems.length
-          ? 'Nenhum monitor nesta lista'
-          : !items.length
-            ? 'Nenhum monitor coincide com a busca (' +
-              rawItems.length +
-              ' vindo(s) do servidor)'
-            : items.length +
-              ' monitor(es) nesta lista' +
-              (qBusca && items.length < rawItems.length
-                ? ' (busca sobre ' + rawItems.length + ')'
-                : ''));
-      sub.textContent = subMsg;
+        (!items.length
+          ? 'Nenhum monitor com os filtros atuais'
+          : items.length + ' monitor(es) nesta lista');
     }
     if (hint) {
       if (!locSel) {
@@ -333,14 +354,9 @@
 
     if (lista) {
       lista.innerHTML = '';
-      if (!rawItems.length) {
-        lista.innerHTML =
-          '<p class="muted">Nenhum monitor para mostrar. Ajuste o filtro de local ou confira o cadastro.</p>';
-        return;
-      }
       if (!items.length) {
         lista.innerHTML =
-          '<p class="muted">Nenhum monitor coincide com o texto de busca. Limpe a busca ou altere o termo.</p>';
+          '<p class="muted">Nenhum monitor com os filtros atuais (local ou texto de busca). Ajuste ou limpe os filtros.</p>';
         return;
       }
       for (const it of items) {
@@ -421,10 +437,10 @@
 
   async function apiRelatorioVistoria() {
     const { token, senha } = getAuth();
-    const loc = valorFiltroLocalParaApi();
-    const q = loc ? '?local=' + encodeURIComponent(loc) : '';
     const r = await fetch(
-      '/api/relatorio-vistoria/' + encodeURIComponent(token) + q,
+      '/api/relatorio-vistoria/' +
+        encodeURIComponent(token) +
+        invQueryLocalQ(),
       { headers: { 'X-Senha': senha } }
     );
     const j = await r.json();
@@ -443,44 +459,28 @@
       const opt = selLocRel.options[selLocRel.selectedIndex];
       return opt ? opt.textContent.trim() : '';
     })();
-    const buscaRel = $('inv-busca-rel') || $('inv-busca');
-    const qBusca = (buscaRel && buscaRel.value) || '';
-    const rawItens = data.itens || [];
-    const itens = rawItens.filter((it) => matchesBuscaRelatorio(it, qBusca));
-    const mostrarTotal = qBusca ? itens.length : rawItens.length;
+    const itens = data.itens || [];
+    const nTot = data.total != null ? data.total : itens.length;
 
     if (sub) {
       let html =
         '<span>' +
         escapeHtml(data.secretaria && data.secretaria.nome ? data.secretaria.nome : '') +
         '</span> · <strong>' +
-        escapeHtml(String(mostrarTotal)) +
+        escapeHtml(String(nTot)) +
         '</strong> equipamento(s) com vistoria registada';
       if (locSel) {
         html +=
           ' · filtro de local: <strong>' + escapeHtml(locLabel) + '</strong>';
-      }
-      if (qBusca && itens.length < rawItens.length) {
-        html +=
-          ' · <span class="muted">busca: ' +
-          escapeHtml(String(itens.length)) +
-          ' de ' +
-          escapeHtml(String(rawItens.length)) +
-          '</span>';
       }
       sub.innerHTML = html;
     }
 
     if (!lista) return;
     lista.innerHTML = '';
-    if (!rawItens.length) {
-      lista.innerHTML =
-        '<p class="muted">Nenhum equipamento com vistoria neste filtro. Noutros casos, use «Todos os locais» ou confira se já existem registos na aba «Já inventariados».</p>';
-      return;
-    }
     if (!itens.length) {
       lista.innerHTML =
-        '<p class="muted">Nenhum equipamento coincide com o texto de busca neste relatório.</p>';
+        '<p class="muted">Nenhum equipamento com vistoria com os filtros atuais (local ou busca), ou ainda não há registos nesta secretaria.</p>';
       return;
     }
 
@@ -607,11 +607,9 @@
         clearTimeout(t);
         t = setTimeout(() => {
           copyAuxToMain(suffix);
-          if (suffix === 'mon' && monitoresPainelUltimoJson)
-            renderMonitoresPainel(monitoresPainelUltimoJson);
-          else if (suffix === 'rel' && relatorioVistoriaUltimoJson)
-            renderRelatorioVistoria(relatorioVistoriaUltimoJson);
-        }, 180);
+          if (suffix === 'mon') reloadMonitoresPainelIfActive();
+          else reloadRelatorioVistoriaIfActive();
+        }, 220);
       });
     }
   }
@@ -644,47 +642,10 @@
   let ajusteNomePc = null;
   /** Locais distintos vindos da API (PC + monitores da secretaria) para o select de filtro */
   let locaisFiltroExtra = [];
-
-  function norm(s) {
-    return String(s || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '');
-  }
-
-  function matchesBusca(c, qRaw) {
-    const q = norm(String(qRaw || '').trim());
-    if (!q) return true;
-    return [c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad]
-      .map((x) => norm(x))
-      .some((t) => t.includes(q));
-  }
-
-  function matchesBuscaMonitor(it, qRaw) {
-    const q = norm(String(qRaw || '').trim());
-    if (!q) return true;
-    const v = it.vinculo;
-    const parts = [
-      it.patrimonio,
-      it.modelo,
-      it.localizacao,
-      v && v.nome_maquina,
-      v && v.pc_patrimonio,
-      v && v.localizacao,
-    ];
-    return parts.map((x) => norm(x)).some((t) => t.includes(q));
-  }
-
-  function matchesBuscaRelatorio(it, qRaw) {
-    const q = norm(String(qRaw || '').trim());
-    if (!q) return true;
-    const parts = [it.nome_maquina, it.patrimonio, it.localizacao];
-    const mons = it.monitores || [];
-    for (const m of mons) {
-      parts.push(m.patrimonio, m.modelo, m.localizacao);
-    }
-    return parts.map((x) => norm(x)).some((t) => t.includes(q));
-  }
+  /** Algum PC da secretaria sem local no cadastro — opção «(sem local definido)» no filtro */
+  let temPcSemLocalNoCadastro = false;
+  /** Último resumo global da secretaria (contadores das abas não dependem do filtro) */
+  let lastResumo = null;
 
   const LOCAL_FILTRO_VAZIO = '__sem_local__';
 
@@ -707,30 +668,14 @@
     return sel ? sel.value || '' : '';
   }
 
-  function matchesLocal(c, localSel) {
-    if (!localSel) return true;
-    const loc = String(c.localizacao || '').trim();
-    if (localSel === LOCAL_FILTRO_VAZIO) return !loc;
-    return loc === localSel;
-  }
-
   function populateFiltroLocal() {
     const sel = $('inv-filtro-local');
     if (!sel) return;
     const prev = sel.value;
-    const unique = new Set();
-    let temSemLocal = false;
-    for (const c of computadoresCache) {
-      const t = String(c.localizacao || '').trim();
-      if (!t) temSemLocal = true;
-      else unique.add(t);
-    }
-    for (const x of locaisFiltroExtra) {
-      const t = String(x || '').trim();
-      if (t) unique.add(t);
-    }
-    const sorted = [...unique].sort((a, b) =>
-      a.localeCompare(b, 'pt', { sensitivity: 'base' })
+    const sorted = [...locaisFiltroExtra].sort((a, b) =>
+      String(a || '').localeCompare(String(b || ''), 'pt', {
+        sensitivity: 'base',
+      })
     );
 
     sel.innerHTML = '';
@@ -739,12 +684,14 @@
     optAll.textContent = 'Todos os locais';
     sel.appendChild(optAll);
     for (const loc of sorted) {
+      const t = String(loc || '').trim();
+      if (!t) continue;
       const o = document.createElement('option');
-      o.value = loc;
-      o.textContent = loc;
+      o.value = t;
+      o.textContent = t;
       sel.appendChild(o);
     }
-    if (temSemLocal) {
+    if (temPcSemLocalNoCadastro) {
       const o = document.createElement('option');
       o.value = LOCAL_FILTRO_VAZIO;
       o.textContent = '(sem local definido)';
@@ -786,6 +733,19 @@
   }
 
   function updateTabCounts() {
+    if (
+      lastResumo &&
+      lastResumo.computadores_total != null &&
+      Number(lastResumo.computadores_total) > 0
+    ) {
+      const feitos =
+        (lastResumo.confirmados || 0) +
+        (lastResumo.nao_encontrado || 0) +
+        (lastResumo.outro_local || 0);
+      $('cnt-pend').textContent = String(lastResumo.pendentes || 0);
+      $('cnt-feitos').textContent = String(feitos);
+      return;
+    }
     const pend = computadoresCache.filter(isPendente).length;
     const feitos = computadoresCache.filter(isFeito).length;
     $('cnt-pend').textContent = String(pend);
@@ -958,14 +918,7 @@
     const dl = $('inv-datalist');
     if (!dl) return;
     dl.innerHTML = '';
-    const q = norm($('inv-busca').value);
-    const locF = valorFiltroLocal();
-    const pool = computadoresCache.filter(
-      (c) =>
-        isPendente(c) &&
-        matchesLocal(c, locF) &&
-        (q ? matchesBusca(c, $('inv-busca').value) : true)
-    );
+    const pool = computadoresCache.filter((c) => isPendente(c));
     const seen = new Set();
     let n = 0;
     for (const c of pool) {
@@ -988,13 +941,10 @@
     const root = $('lista-computadores');
     root.innerHTML = '';
 
-    const q = $('inv-busca') ? $('inv-busca').value : '';
-    const locF = valorFiltroLocal();
     const list = computadoresCache.filter((c) => {
       if (currentTab === 'pendente' && !isPendente(c)) return false;
       if (currentTab === 'feitos' && !isFeito(c)) return false;
-      if (!matchesLocal(c, locF)) return false;
-      return matchesBusca(c, q);
+      return true;
     });
 
     if (list.length === 0) {
@@ -1349,10 +1299,13 @@
   };
 
   async function refreshData() {
+    showErr('list-err', '');
     const data = await loadComputadores();
     secretariaNome = data.secretaria && data.secretaria.nome;
     computadoresCache = data.computadores;
     locaisFiltroExtra = Array.isArray(data.locais_filtro) ? data.locais_filtro : [];
+    temPcSemLocalNoCadastro = !!data.tem_pc_sem_local;
+    lastResumo = data.resumo || null;
     renderResumo(data.resumo);
     populateFiltroLocal();
     updateTabCounts();
@@ -1460,17 +1413,15 @@
     buscaEl.addEventListener('input', () => {
       clearTimeout(buscaTimer);
       buscaTimer = setTimeout(() => {
-        updateDatalist();
-        renderLista();
-      }, 180);
+        refreshData().catch((e) => showErr('list-err', e.message));
+      }, 220);
     });
   }
 
   const filtroLocalEl = $('inv-filtro-local');
   if (filtroLocalEl) {
     filtroLocalEl.addEventListener('change', () => {
-      updateDatalist();
-      renderLista();
+      refreshData().catch((e) => showErr('list-err', e.message));
     });
   }
 
