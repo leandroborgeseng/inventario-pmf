@@ -72,12 +72,11 @@
     }
   }
 
-  function populateFiltroSecretaria() {
-    const wrap = $('inv-wrap-filtro-secretaria');
-    const sel = $('inv-filtro-secretaria');
+  function preencherSelectSecretaria(wrapId, selId, list, cur) {
+    const wrap = $(wrapId);
+    const sel = $(selId);
     if (!wrap || !sel) return;
-    const list = lerOpcoesSecretarias();
-    const cur = normToken(tokenFromUrl);
+    const curTok = normToken(cur);
     if (list.length <= 1) {
       wrap.hidden = true;
       sel.innerHTML = '';
@@ -93,10 +92,62 @@
       o.textContent = s.nome || t;
       sel.appendChild(o);
     }
-    const match = [...sel.options].some((o) => normToken(o.value) === cur);
-    if (match) sel.value = cur || sel.options[0].value;
+    const match = [...sel.options].some((o) => normToken(o.value) === curTok);
+    if (match) sel.value = curTok || sel.options[0].value;
     else if (sel.options[0]) sel.selectedIndex = 0;
   }
+
+  function populateFiltroSecretaria() {
+    const list = lerOpcoesSecretarias();
+    const cur = tokenFromUrl;
+    preencherSelectSecretaria('inv-wrap-filtro-secretaria', 'inv-filtro-secretaria', list, cur);
+    preencherSelectSecretaria(
+      'inv-wrap-filtro-secretaria-mon',
+      'inv-filtro-secretaria-mon',
+      list,
+      cur
+    );
+    preencherSelectSecretaria(
+      'inv-wrap-filtro-secretaria-rel',
+      'inv-filtro-secretaria-rel',
+      list,
+      cur
+    );
+  }
+
+  function copyMainToAux(suffix) {
+    const mLoc = $('inv-filtro-local');
+    const aLoc = $('inv-filtro-local-' + suffix);
+    if (mLoc && aLoc && aLoc.options.length) {
+      const v = mLoc.value;
+      if ([...aLoc.options].some((o) => o.value === v)) aLoc.value = v;
+      else aLoc.value = '';
+    }
+    const mB = $('inv-busca');
+    const aB = $('inv-busca-' + suffix);
+    if (mB && aB) aB.value = mB.value;
+    const mS = $('inv-filtro-secretaria');
+    const aS = $('inv-filtro-secretaria-' + suffix);
+    if (mS && aS && aS.options.length) {
+      const v = mS.value;
+      if ([...aS.options].some((o) => o.value === v)) aS.value = v;
+    }
+  }
+
+  function copyAuxToMain(suffix) {
+    const mLoc = $('inv-filtro-local');
+    const aLoc = $('inv-filtro-local-' + suffix);
+    if (mLoc && aLoc) mLoc.value = aLoc.value;
+    const mB = $('inv-busca');
+    const aB = $('inv-busca-' + suffix);
+    if (mB && aB) mB.value = aB.value;
+    const mS = $('inv-filtro-secretaria');
+    const aS = $('inv-filtro-secretaria-' + suffix);
+    if (mS && aS && aS.options.length) mS.value = aS.value;
+  }
+
+  let monitoresPainelUltimoJson = null;
+  let relatorioVistoriaUltimoJson = null;
 
   function onTrocarSecretaria() {
     const sel = $('inv-filtro-secretaria');
@@ -212,6 +263,7 @@
   }
 
   function renderMonitoresPainel(data) {
+    monitoresPainelUltimoJson = data;
     const sub = $('mon-painel-sub');
     const hint = $('mon-painel-hint');
     const resumo = $('mon-painel-resumo');
@@ -223,14 +275,26 @@
       const opt = sel.options[sel.selectedIndex];
       return opt ? opt.textContent.trim() : '';
     })();
+    const qBusca = ($('inv-busca') && $('inv-busca').value) || '';
+    const rawItems = data.monitores || [];
+    const items = rawItems.filter((it) => matchesBuscaMonitor(it, qBusca));
 
     if (sub) {
-      sub.textContent =
+      let subMsg =
         (secretariaNome || 'Secretaria') +
         ' · ' +
-        (data.monitores && data.monitores.length
-          ? data.monitores.length + ' monitor(es) nesta lista'
-          : 'Nenhum monitor nesta lista');
+        (!rawItems.length
+          ? 'Nenhum monitor nesta lista'
+          : !items.length
+            ? 'Nenhum monitor coincide com a busca (' +
+              rawItems.length +
+              ' vindo(s) do servidor)'
+            : items.length +
+              ' monitor(es) nesta lista' +
+              (qBusca && items.length < rawItems.length
+                ? ' (busca sobre ' + rawItems.length + ')'
+                : ''));
+      sub.textContent = subMsg;
     }
     if (hint) {
       if (!locSel) {
@@ -244,7 +308,6 @@
       }
     }
 
-    const items = data.monitores || [];
     let nSem = 0;
     let nLigConfirm = 0;
     let nLigOutro = 0;
@@ -269,9 +332,14 @@
 
     if (lista) {
       lista.innerHTML = '';
-      if (!items.length) {
+      if (!rawItems.length) {
         lista.innerHTML =
           '<p class="muted">Nenhum monitor para mostrar. Ajuste o filtro de local ou confira o cadastro.</p>';
+        return;
+      }
+      if (!items.length) {
+        lista.innerHTML =
+          '<p class="muted">Nenhum monitor coincide com o texto de busca. Limpe a busca ou altere o termo.</p>';
         return;
       }
       for (const it of items) {
@@ -324,6 +392,7 @@
     showErr('mon-painel-err', '');
     const lista = $('mon-painel-lista');
     if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    copyMainToAux('mon');
     showScreen('screen-monitores-painel');
     try {
       const data = await apiMonitoresPainel();
@@ -363,6 +432,7 @@
   }
 
   function renderRelatorioVistoria(data) {
+    relatorioVistoriaUltimoJson = data;
     const sub = $('rel-vistoria-sub');
     const lista = $('rel-vistoria-lista');
     const locSel = valorFiltroLocal();
@@ -372,27 +442,43 @@
       const opt = sel.options[sel.selectedIndex];
       return opt ? opt.textContent.trim() : '';
     })();
+    const qBusca = ($('inv-busca') && $('inv-busca').value) || '';
+    const rawItens = data.itens || [];
+    const itens = rawItens.filter((it) => matchesBuscaRelatorio(it, qBusca));
+    const mostrarTotal = qBusca ? itens.length : rawItens.length;
 
     if (sub) {
       let html =
         '<span>' +
         escapeHtml(data.secretaria && data.secretaria.nome ? data.secretaria.nome : '') +
         '</span> · <strong>' +
-        escapeHtml(String(data.total != null ? data.total : 0)) +
+        escapeHtml(String(mostrarTotal)) +
         '</strong> equipamento(s) com vistoria registada';
       if (locSel) {
         html +=
           ' · filtro de local: <strong>' + escapeHtml(locLabel) + '</strong>';
+      }
+      if (qBusca && itens.length < rawItens.length) {
+        html +=
+          ' · <span class="muted">busca: ' +
+          escapeHtml(String(itens.length)) +
+          ' de ' +
+          escapeHtml(String(rawItens.length)) +
+          '</span>';
       }
       sub.innerHTML = html;
     }
 
     if (!lista) return;
     lista.innerHTML = '';
-    const itens = data.itens || [];
-    if (!itens.length) {
+    if (!rawItens.length) {
       lista.innerHTML =
         '<p class="muted">Nenhum equipamento com vistoria neste filtro. Noutros casos, use «Todos os locais» ou confira se já existem registos na aba «Já inventariados».</p>';
+      return;
+    }
+    if (!itens.length) {
+      lista.innerHTML =
+        '<p class="muted">Nenhum equipamento coincide com o texto de busca neste relatório.</p>';
       return;
     }
 
@@ -455,6 +541,7 @@
     showErr('rel-vistoria-err', '');
     const lista = $('rel-vistoria-lista');
     if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    copyMainToAux('rel');
     showScreen('screen-relatorio-vistoria');
     try {
       const d = await apiRelatorioVistoria();
@@ -462,6 +549,68 @@
     } catch (e) {
       showErr('rel-vistoria-err', e.message);
       if (lista) lista.innerHTML = '';
+    }
+  }
+
+  async function reloadMonitoresPainelIfActive() {
+    const scr = $('screen-monitores-painel');
+    if (!scr || !scr.classList.contains('active')) return;
+    showErr('mon-painel-err', '');
+    const lista = $('mon-painel-lista');
+    if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    try {
+      const data = await apiMonitoresPainel();
+      renderMonitoresPainel(data);
+    } catch (e) {
+      showErr('mon-painel-err', e.message);
+      if (lista) lista.innerHTML = '';
+    }
+  }
+
+  async function reloadRelatorioVistoriaIfActive() {
+    const scr = $('screen-relatorio-vistoria');
+    if (!scr || !scr.classList.contains('active')) return;
+    showErr('rel-vistoria-err', '');
+    const lista = $('rel-vistoria-lista');
+    if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    try {
+      const d = await apiRelatorioVistoria();
+      renderRelatorioVistoria(d);
+    } catch (e) {
+      showErr('rel-vistoria-err', e.message);
+      if (lista) lista.innerHTML = '';
+    }
+  }
+
+  function setupAuxFiltros(suffix) {
+    const loc = $('inv-filtro-local-' + suffix);
+    if (loc) {
+      loc.addEventListener('change', () => {
+        copyAuxToMain(suffix);
+        if (suffix === 'mon') reloadMonitoresPainelIfActive();
+        else reloadRelatorioVistoriaIfActive();
+      });
+    }
+    const sec = $('inv-filtro-secretaria-' + suffix);
+    if (sec) {
+      sec.addEventListener('change', () => {
+        copyAuxToMain(suffix);
+        onTrocarSecretaria();
+      });
+    }
+    const busca = $('inv-busca-' + suffix);
+    if (busca) {
+      let t = null;
+      busca.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(() => {
+          copyAuxToMain(suffix);
+          if (suffix === 'mon' && monitoresPainelUltimoJson)
+            renderMonitoresPainel(monitoresPainelUltimoJson);
+          else if (suffix === 'rel' && relatorioVistoriaUltimoJson)
+            renderRelatorioVistoria(relatorioVistoriaUltimoJson);
+        }, 180);
+      });
     }
   }
 
@@ -502,11 +651,37 @@
   }
 
   function matchesBusca(c, qRaw) {
-    const q = norm(qRaw.trim());
+    const q = norm(String(qRaw || '').trim());
     if (!q) return true;
     return [c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad]
       .map((x) => norm(x))
       .some((t) => t.includes(q));
+  }
+
+  function matchesBuscaMonitor(it, qRaw) {
+    const q = norm(String(qRaw || '').trim());
+    if (!q) return true;
+    const v = it.vinculo;
+    const parts = [
+      it.patrimonio,
+      it.modelo,
+      it.localizacao,
+      v && v.nome_maquina,
+      v && v.pc_patrimonio,
+      v && v.localizacao,
+    ];
+    return parts.map((x) => norm(x)).some((t) => t.includes(q));
+  }
+
+  function matchesBuscaRelatorio(it, qRaw) {
+    const q = norm(String(qRaw || '').trim());
+    if (!q) return true;
+    const parts = [it.nome_maquina, it.patrimonio, it.localizacao];
+    const mons = it.monitores || [];
+    for (const m of mons) {
+      parts.push(m.patrimonio, m.modelo, m.localizacao);
+    }
+    return parts.map((x) => norm(x)).some((t) => t.includes(q));
   }
 
   const LOCAL_FILTRO_VAZIO = '__sem_local__';
@@ -563,6 +738,20 @@
     const retains = [...sel.options].some((opt) => opt.value === prev);
     if (retains) sel.value = prev;
     else sel.value = '';
+    syncFiltroLocalAuxiliares();
+  }
+
+  function syncFiltroLocalAuxiliares() {
+    const main = $('inv-filtro-local');
+    if (!main) return;
+    const v = main.value;
+    for (const suf of ['mon', 'rel']) {
+      const aux = $('inv-filtro-local-' + suf);
+      if (!aux) continue;
+      aux.innerHTML = main.innerHTML;
+      if ([...aux.options].some((o) => o.value === v)) aux.value = v;
+      else aux.value = '';
+    }
   }
 
   function isPendente(c) {
@@ -1266,6 +1455,9 @@
   if (filtroSecEl) {
     filtroSecEl.addEventListener('change', () => onTrocarSecretaria());
   }
+
+  setupAuxFiltros('mon');
+  setupAuxFiltros('rel');
 
   async function afterLogin() {
     showErr('list-err', '');

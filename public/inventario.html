@@ -135,6 +135,27 @@
           </button>
         </div>
         <h1>Relatório — vistoria</h1>
+        <div class="card inv-filtros-card inv-filtros-aux">
+          <div id="inv-wrap-filtro-secretaria-rel" class="inv-filtro-sec-wrap" hidden>
+            <label class="field" for="inv-filtro-secretaria-rel">Secretaria</label>
+            <select id="inv-filtro-secretaria-rel" class="field-sm"></select>
+            <p class="muted inv-filtro-hint">Mesmo critério da lista principal.</p>
+          </div>
+          <label class="field" for="inv-filtro-local-rel">Filtrar por local</label>
+          <select id="inv-filtro-local-rel" class="field-sm">
+            <option value="">Todos os locais</option>
+          </select>
+          <label class="field inv-filtro-busca-lbl" for="inv-busca-rel">Buscar (nome, patrimônio ou local)</label>
+          <input
+            id="inv-busca-rel"
+            type="search"
+            class="field-sm"
+            placeholder="Digite para filtrar…"
+            autocomplete="off"
+            list="inv-datalist-rel"
+          />
+          <datalist id="inv-datalist-rel"></datalist>
+        </div>
         <p class="sub" id="rel-vistoria-sub"></p>
         <div class="err" id="rel-vistoria-err"></div>
         <div id="rel-vistoria-lista"></div>
@@ -231,6 +252,27 @@
           </button>
         </div>
         <h1>Monitores</h1>
+        <div class="card inv-filtros-card inv-filtros-aux">
+          <div id="inv-wrap-filtro-secretaria-mon" class="inv-filtro-sec-wrap" hidden>
+            <label class="field" for="inv-filtro-secretaria-mon">Secretaria</label>
+            <select id="inv-filtro-secretaria-mon" class="field-sm"></select>
+            <p class="muted inv-filtro-hint">Mesmo critério da lista principal.</p>
+          </div>
+          <label class="field" for="inv-filtro-local-mon">Filtrar por local</label>
+          <select id="inv-filtro-local-mon" class="field-sm">
+            <option value="">Todos os locais</option>
+          </select>
+          <label class="field inv-filtro-busca-lbl" for="inv-busca-mon">Buscar (patrimônio, modelo ou local)</label>
+          <input
+            id="inv-busca-mon"
+            type="search"
+            class="field-sm"
+            placeholder="Digite para filtrar…"
+            autocomplete="off"
+            list="inv-datalist-mon"
+          />
+          <datalist id="inv-datalist-mon"></datalist>
+        </div>
         <p class="sub" id="mon-painel-sub"></p>
         <p class="muted inv-mon-painel-hint" id="mon-painel-hint"></p>
         <div class="err" id="mon-painel-err"></div>
