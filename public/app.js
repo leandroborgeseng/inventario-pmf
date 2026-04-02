@@ -237,7 +237,7 @@
 
   async function apiMonitoresPainel() {
     const { token, senha } = getAuth();
-    const loc = valorFiltroLocal();
+    const loc = valorFiltroLocalParaApi();
     const q = loc ? '?local=' + encodeURIComponent(loc) : '';
     const r = await fetch(
       '/api/monitores-painel/' + encodeURIComponent(token) + q,
@@ -268,14 +268,15 @@
     const hint = $('mon-painel-hint');
     const resumo = $('mon-painel-resumo');
     const lista = $('mon-painel-lista');
-    const locSel = valorFiltroLocal();
+    const selLocMon = $('inv-filtro-local-mon') || $('inv-filtro-local');
+    const locSel = selLocMon ? selLocMon.value || '' : '';
     const locLabel = (() => {
-      const sel = $('inv-filtro-local');
-      if (!sel || !locSel) return '';
-      const opt = sel.options[sel.selectedIndex];
+      if (!selLocMon || !locSel) return '';
+      const opt = selLocMon.options[selLocMon.selectedIndex];
       return opt ? opt.textContent.trim() : '';
     })();
-    const qBusca = ($('inv-busca') && $('inv-busca').value) || '';
+    const buscaMon = $('inv-busca-mon') || $('inv-busca');
+    const qBusca = (buscaMon && buscaMon.value) || '';
     const rawItems = data.monitores || [];
     const items = rawItems.filter((it) => matchesBuscaMonitor(it, qBusca));
 
@@ -420,7 +421,7 @@
 
   async function apiRelatorioVistoria() {
     const { token, senha } = getAuth();
-    const loc = valorFiltroLocal();
+    const loc = valorFiltroLocalParaApi();
     const q = loc ? '?local=' + encodeURIComponent(loc) : '';
     const r = await fetch(
       '/api/relatorio-vistoria/' + encodeURIComponent(token) + q,
@@ -435,14 +436,15 @@
     relatorioVistoriaUltimoJson = data;
     const sub = $('rel-vistoria-sub');
     const lista = $('rel-vistoria-lista');
-    const locSel = valorFiltroLocal();
+    const selLocRel = $('inv-filtro-local-rel') || $('inv-filtro-local');
+    const locSel = selLocRel ? selLocRel.value || '' : '';
     const locLabel = (() => {
-      const sel = $('inv-filtro-local');
-      if (!sel || !locSel) return '';
-      const opt = sel.options[sel.selectedIndex];
+      if (!selLocRel || !locSel) return '';
+      const opt = selLocRel.options[selLocRel.selectedIndex];
       return opt ? opt.textContent.trim() : '';
     })();
-    const qBusca = ($('inv-busca') && $('inv-busca').value) || '';
+    const buscaRel = $('inv-busca-rel') || $('inv-busca');
+    const qBusca = (buscaRel && buscaRel.value) || '';
     const rawItens = data.itens || [];
     const itens = rawItens.filter((it) => matchesBuscaRelatorio(it, qBusca));
     const mostrarTotal = qBusca ? itens.length : rawItens.length;
@@ -691,6 +693,20 @@
     return sel ? sel.value || '' : '';
   }
 
+  /** Select de local do ecrã visível — evita pedir à API com o valor errado quando se usa -mon / -rel. */
+  function selectFiltroLocalAtivo() {
+    const scrMon = $('screen-monitores-painel');
+    if (scrMon && scrMon.classList.contains('active')) return $('inv-filtro-local-mon');
+    const scrRel = $('screen-relatorio-vistoria');
+    if (scrRel && scrRel.classList.contains('active')) return $('inv-filtro-local-rel');
+    return $('inv-filtro-local');
+  }
+
+  function valorFiltroLocalParaApi() {
+    const sel = selectFiltroLocalAtivo();
+    return sel ? sel.value || '' : '';
+  }
+
   function matchesLocal(c, localSel) {
     if (!localSel) return true;
     const loc = String(c.localizacao || '').trim();
@@ -748,8 +764,15 @@
     for (const suf of ['mon', 'rel']) {
       const aux = $('inv-filtro-local-' + suf);
       if (!aux) continue;
-      aux.innerHTML = main.innerHTML;
-      if ([...aux.options].some((o) => o.value === v)) aux.value = v;
+      aux.innerHTML = '';
+      for (let i = 0; i < main.options.length; i++) {
+        const o = main.options[i];
+        const no = document.createElement('option');
+        no.value = o.value;
+        no.textContent = o.text;
+        aux.appendChild(no);
+      }
+      if ([...aux.options].some((opt) => opt.value === v)) aux.value = v;
       else aux.value = '';
     }
   }
@@ -1508,11 +1531,17 @@
 
   const btnVoltarRelVistoria = $('btn-voltar-relatorio-vistoria');
   if (btnVoltarRelVistoria)
-    btnVoltarRelVistoria.onclick = () => showScreen('screen-list');
+    btnVoltarRelVistoria.onclick = () => {
+      copyAuxToMain('rel');
+      showScreen('screen-list');
+    };
 
   const btnVoltarMonPainel = $('btn-voltar-mon-painel');
   if (btnVoltarMonPainel)
-    btnVoltarMonPainel.onclick = () => showScreen('screen-list');
+    btnVoltarMonPainel.onclick = () => {
+      copyAuxToMain('mon');
+      showScreen('screen-list');
+    };
 
   $('btn-sair').onclick = () => {
     clearAuth();

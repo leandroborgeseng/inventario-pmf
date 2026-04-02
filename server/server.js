@@ -563,12 +563,15 @@ app.get('/api/monitores-painel/:token', async (req, res) => {
     const s = await validateSecretariaAccess(req.params.token, senha);
     if (!s) return res.status(401).json({ error: 'Não autorizado' });
 
-    const localRaw = req.query.local;
+    const localRawSingle = req.query.local;
+    const localRaw = Array.isArray(localRawSingle)
+      ? localRawSingle[0]
+      : localRawSingle;
     const hasLocal =
       localRaw != null &&
       String(localRaw).trim() !== '' &&
       String(localRaw).trim() !== 'undefined';
-    const localFilter = hasLocal ? String(localRaw) : '';
+    const localFilter = hasLocal ? String(localRaw).trim() : '';
 
     const monitores = await dbAll(
       `SELECT m.id, m.patrimonio, m.modelo, m.localizacao
@@ -651,12 +654,15 @@ app.get('/api/relatorio-vistoria/:token', async (req, res) => {
     const s = await validateSecretariaAccess(req.params.token, senha);
     if (!s) return res.status(401).json({ error: 'Não autorizado' });
 
-    const localRaw = req.query.local;
+    const localRawSingle = req.query.local;
+    const localRaw = Array.isArray(localRawSingle)
+      ? localRawSingle[0]
+      : localRawSingle;
     const hasLocal =
       localRaw != null &&
       String(localRaw).trim() !== '' &&
       String(localRaw).trim() !== 'undefined';
-    const localFilter = hasLocal ? String(localRaw) : '';
+    const localFilter = hasLocal ? String(localRaw).trim() : '';
 
     const pcs = await dbAll(
       `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao,
@@ -1435,6 +1441,153 @@ app.delete('/api/admin/monitor/:id', async (req, res) => {
     if (r.changes === 0)
       return res.status(404).json({ ok: false, error: 'Não encontrado' });
     res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * GET /api/admin/dashboard — visão agregada (computadores, vistoria, monitores) por secretaria e globais.
+ */
+app.get('/api/admin/dashboard', async (req, res) => {
+  try {
+    if (!assertAdmin(req, res)) return;
+
+    const porSec = await dbAll(
+      `SELECT s.id, s.nome, s.token,
+        COUNT(DISTINCT c.id) AS total_pc,
+        COALESCE(SUM(CASE WHEN a.id IS NULL THEN 1 ELSE 0 END), 0) AS pendentes,
+        COALESCE(SUM(CASE WHEN a.confirmado = 'confirmado' THEN 1 ELSE 0 END), 0) AS confirmados,
+        COALESCE(SUM(CASE WHEN a.confirmado = 'nao_encontrado' THEN 1 ELSE 0 END), 0) AS nao_encontrados,
+        COALESCE(SUM(CASE WHEN a.confirmado = 'outro_local' THEN 1 ELSE 0 END), 0) AS outro_local
+       FROM secretarias s
+       LEFT JOIN computadores c ON c.secretaria_id = s.id
+       LEFT JOIN auditoria a ON a.computador_id = c.id
+       GROUP BY s.id
+       ORDER BY s.nome COLLATE NOCASE`
+    );
+
+    const monTotal = await dbAll(
+      `SELECT secretaria_id, COUNT(*) AS n FROM monitores GROUP BY secretaria_id`
+    );
+    const monMap = new Map(
+      monTotal.map((r) => [r.secretaria_id, Number(r.n) || 0])
+    );
+
+    const monSem = await dbAll(
+      `SELECT m.secretaria_id AS sid, COUNT(*) AS n
+       FROM monitores m
+       WHERE NOT EXISTS (
+         SELECT 1 FROM auditoria_monitores am
+         INNER JOIN auditoria a ON a.id = am.auditoria_id
+         INNER JOIN computadores c ON c.id = a.computador_id
+         WHERE am.monitor_id = m.id AND am.confirmado = 1
+           AND c.secretaria_id = m.secretaria_id
+       )
+       GROUP BY m.secretaria_id`
+    );
+    const monSemMap = new Map(monSem.map((r) => [r.sid, Number(r.n) || 0]));
+
+    const pcSemMon = await dbAll(
+      `SELECT c.secretaria_id AS sid, COUNT(*) AS n
+       FROM auditoria a
+       INNER JOIN computadores c ON c.id = a.computador_id
+       WHERE a.confirmado = 'confirmado'
+         AND NOT EXISTS (
+           SELECT 1 FROM auditoria_monitores am
+           WHERE am.auditoria_id = a.id AND am.confirmado = 1
+         )
+       GROUP BY c.secretaria_id`
+    );
+    const pcSemMonMap = new Map(pcSemMon.map((r) => [r.sid, Number(r.n) || 0]));
+
+    const porSecretaria = porSec.map((row) => {
+      const totalPc = Number(row.total_pc) || 0;
+      const pend = Number(row.pendentes) || 0;
+      const conf = Number(row.confirmados) || 0;
+      const nenc = Number(row.nao_encontrados) || 0;
+      const oloc = Number(row.outro_local) || 0;
+      const registados = conf + nenc + oloc;
+      const pctVist =
+        totalPc > 0 ? Math.round((registados / totalPc) * 1000) / 10 : 0;
+      const totMon = monMap.get(row.id) ?? 0;
+      const semV = monSemMap.get(row.id) ?? 0;
+      const comV = Math.max(0, totMon - semV);
+      const pctMon =
+        totMon > 0 ? Math.round((comV / totMon) * 1000) / 10 : null;
+      const pcSemM = pcSemMonMap.get(row.id) ?? 0;
+      return {
+        id: row.id,
+        nome: row.nome,
+        token: row.token,
+        total_pc: totalPc,
+        pendentes: pend,
+        confirmados: conf,
+        nao_encontrados: nenc,
+        outro_local: oloc,
+        percent_vistoria_feita: pctVist,
+        total_mon: totMon,
+        mon_sem_vinculo: semV,
+        mon_com_vinculo: comV,
+        percent_mon_vinculados: pctMon,
+        pcs_confirmados_sem_monitor: pcSemM,
+      };
+    });
+
+    const totalPcAll = porSecretaria.reduce((s, x) => s + x.total_pc, 0);
+    const totals = porSecretaria.reduce(
+      (acc, x) => {
+        acc.pendentes += x.pendentes;
+        acc.confirmados += x.confirmados;
+        acc.nao_encontrados += x.nao_encontrados;
+        acc.outro_local += x.outro_local;
+        acc.total_mon += x.total_mon;
+        acc.mon_sem_vinculo += x.mon_sem_vinculo;
+        acc.pcs_confirmados_sem_monitor += x.pcs_confirmados_sem_monitor;
+        return acc;
+      },
+      {
+        pendentes: 0,
+        confirmados: 0,
+        nao_encontrados: 0,
+        outro_local: 0,
+        total_mon: 0,
+        mon_sem_vinculo: 0,
+        pcs_confirmados_sem_monitor: 0,
+      }
+    );
+
+    const registadosAll =
+      totals.confirmados + totals.nao_encontrados + totals.outro_local;
+    const pctVistGlobal =
+      totalPcAll > 0
+        ? Math.round((registadosAll / totalPcAll) * 1000) / 10
+        : 0;
+    const comMonGlob = Math.max(0, totals.total_mon - totals.mon_sem_vinculo);
+    const pctMonGlob =
+      totals.total_mon > 0
+        ? Math.round((comMonGlob / totals.total_mon) * 1000) / 10
+        : null;
+
+    res.json({
+      ok: true,
+      atualizado_em: new Date().toISOString(),
+      globais: {
+        computadores: totalPcAll,
+        monitores: totals.total_mon,
+        pendentes: totals.pendentes,
+        confirmados: totals.confirmados,
+        nao_encontrados: totals.nao_encontrados,
+        outro_local: totals.outro_local,
+        com_auditoria: registadosAll,
+        percent_vistoria_feita: pctVistGlobal,
+        monitores_sem_vinculo: totals.mon_sem_vinculo,
+        monitores_com_vinculo: comMonGlob,
+        percent_monitores_vinculados: pctMonGlob,
+        pcs_confirmados_sem_monitor: totals.pcs_confirmados_sem_monitor,
+      },
+      porSecretaria,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

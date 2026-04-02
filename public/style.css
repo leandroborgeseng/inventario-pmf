@@ -348,6 +348,217 @@ main.admin-main {
   max-width: min(960px, 100%);
 }
 
+main.admin-main-wide {
+  max-width: min(1180px, 100%);
+}
+
+.admin-dash-toolbar {
+  margin-bottom: 1rem;
+}
+
+.admin-dash-block {
+  margin-bottom: 2rem;
+}
+
+.admin-dash-h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+  font-weight: 700;
+}
+
+.admin-dash-h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.admin-dash-hint {
+  font-size: 0.86rem;
+  margin: 0 0 0.65rem;
+  line-height: 1.4;
+}
+
+.admin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
+.admin-kpi-grid--mon {
+  margin-top: 1rem;
+}
+
+.admin-kpi-grid .stat-box--wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 520px) {
+  .admin-kpi-grid .stat-box--wide {
+    grid-column: span 1;
+  }
+}
+
+.stat-box--ok strong {
+  color: var(--success);
+}
+
+.stat-box--no strong {
+  color: var(--danger);
+}
+
+.stat-box--move strong {
+  color: var(--warn);
+}
+
+.stat-box--warn strong {
+  color: var(--warn);
+}
+
+.admin-dash-progress-block {
+  margin-bottom: 1.5rem;
+}
+
+.admin-dash-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.admin-dash-progress-head strong {
+  color: var(--accent);
+  font-size: 1.1rem;
+}
+
+.admin-dash-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.admin-dash-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  width: 0%;
+  transition: width 0.35s ease;
+}
+
+.admin-stack-block {
+  margin-bottom: 1rem;
+}
+
+.admin-stack-bar {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.admin-stack-empty {
+  display: block;
+  padding: 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.admin-seg {
+  display: block;
+  min-width: 4px;
+  height: 28px;
+  transition: width 0.3s ease;
+}
+
+.admin-seg-ok {
+  background: var(--success);
+}
+
+.admin-seg-pend {
+  background: rgba(139, 154, 173, 0.55);
+}
+
+.admin-seg-no {
+  background: var(--danger);
+}
+
+.admin-seg-move {
+  background: var(--warn);
+}
+
+.admin-stack-legend {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.admin-stack-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.admin-leg-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.admin-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0 0 0.65rem;
+}
+
+.admin-alert--warn {
+  background: rgba(220, 160, 80, 0.15);
+  border: 1px solid rgba(220, 160, 80, 0.35);
+}
+
+.admin-alert--info {
+  background: rgba(100, 149, 237, 0.12);
+  border: 1px solid rgba(100, 149, 237, 0.3);
+}
+
+.admin-table-sortable th.sortable {
+  user-select: none;
+  white-space: nowrap;
+}
+
+.admin-table-sortable th.sortable:hover {
+  color: var(--accent);
+}
+
+.admin-table-sortable th.sort-asc::after {
+  content: ' ▲';
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+.admin-table-sortable th.sort-desc::after {
+  content: ' ▼';
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+tr.admin-row-attn td {
+  background: rgba(220, 160, 80, 0.07);
+}
+
 .admin-nav {
   display: flex;
   flex-wrap: wrap;

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <main class="admin-main">
+    <main class="admin-main admin-main-wide">
       <div id="admin-login" class="screen active">
         <h1>Painel admin</h1>
         <p class="sub">Informe a senha definida em ADMIN_SENHA no ambiente.</p>
@@ -27,16 +27,77 @@
         <p class="sub" id="dash-updated"></p>
 
         <nav class="admin-nav" id="admin-nav">
-          <button type="button" class="btn btn-ghost active" data-tab="rep">Relatório</button>
+          <button type="button" class="btn btn-ghost active" data-tab="dash">Visão geral</button>
+          <button type="button" class="btn btn-ghost" data-tab="rep">Exportação</button>
           <button type="button" class="btn btn-ghost" data-tab="acc">Secretarias</button>
           <button type="button" class="btn btn-ghost" data-tab="pc">Computadores</button>
           <button type="button" class="btn btn-ghost" data-tab="mon">Monitores</button>
         </nav>
 
-        <div id="tab-rep" class="admin-section active">
-          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem">Resumo</h2>
-          <div class="stat-grid" id="stat-grid"></div>
-          <div class="btn-row-inline" style="margin-top: 1.25rem; flex-wrap: wrap">
+        <div id="tab-dash" class="admin-section active">
+          <div class="admin-dash-toolbar">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-dash-refresh">
+              Atualizar dados
+            </button>
+          </div>
+
+          <section class="admin-dash-block">
+            <h2 class="admin-dash-h2">Visão global</h2>
+            <div class="admin-kpi-grid" id="dash-kpi"></div>
+            <div class="admin-dash-progress-block">
+              <div class="admin-dash-progress-head">
+                <span>Progresso da vistoria (computadores com qualquer registo)</span>
+                <strong id="dash-pct-label">0%</strong>
+              </div>
+              <div class="admin-dash-progress-track">
+                <div class="admin-dash-progress-fill" id="dash-pct-bar"></div>
+              </div>
+            </div>
+            <div class="admin-stack-block">
+              <h3 class="admin-dash-h3">Distribuição por estado</h3>
+              <div class="admin-stack-bar" id="dash-stack" role="img" aria-label="Barras proporcionais por estado"></div>
+              <ul class="admin-stack-legend" id="dash-legend"></ul>
+            </div>
+            <div class="admin-kpi-grid admin-kpi-grid--mon" id="dash-kpi-mon"></div>
+          </section>
+
+          <section class="admin-dash-block" id="dash-alerts" hidden></section>
+
+          <section class="admin-dash-block">
+            <h2 class="admin-dash-h2">Por secretaria</h2>
+            <p class="muted admin-dash-hint">
+              Ordenação: clique no cabeçalho. «PC sem mon.» = confirmados na vistoria sem monitor associado.
+              «Mon. s/ vínculo» = monitores ainda não ligados a um PC na auditoria.
+            </p>
+            <div class="table-scroll">
+              <table class="admin-table admin-table-sortable" id="dash-table-sec">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-sort="nome" data-type="str">Secretaria</th>
+                    <th class="sortable" data-sort="total_pc" data-type="num">PCs</th>
+                    <th class="sortable" data-sort="percent_vistoria_feita" data-type="num">% vistoria</th>
+                    <th class="sortable" data-sort="confirmados" data-type="num">OK</th>
+                    <th class="sortable" data-sort="pendentes" data-type="num">Pend.</th>
+                    <th class="sortable" data-sort="nao_encontrados" data-type="num">Não enc.</th>
+                    <th class="sortable" data-sort="outro_local" data-type="num">Outro loc.</th>
+                    <th class="sortable" data-sort="total_mon" data-type="num">Mon.</th>
+                    <th class="sortable" data-sort="percent_mon_vinculados" data-type="num">% mon. vinc.</th>
+                    <th class="sortable" data-sort="pcs_confirmados_sem_monitor" data-type="num">PC sem mon.</th>
+                    <th class="sortable" data-sort="mon_sem_vinculo" data-type="num">Mon. s/ vínc.</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div id="tab-rep" class="admin-section">
+          <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem">Exportação e backup</h2>
+          <p class="muted" style="margin: 0 0 1rem">
+            Os números consolidados estão em <strong>Visão geral</strong>. Aqui gera ficheiros para arquivo.
+          </p>
+          <div class="btn-row-inline" style="flex-wrap: wrap">
             <button type="button" class="btn btn-success" id="btn-export">
               Exportar Excel
             </button>
@@ -47,22 +108,6 @@
           <p class="muted" style="font-size: 0.85rem; margin: 0.35rem 0 0">
             O backup contém todas as vistorias — guarde fora do servidor (ex.: após mudanças importantes).
           </p>
-          <h2 style="margin-top: 1.75rem; font-size: 1.1rem">Por secretaria</h2>
-          <div class="table-scroll">
-            <table class="admin-table" id="table-sec">
-              <thead>
-                <tr>
-                  <th>Secretaria</th>
-                  <th>Total</th>
-                  <th>OK</th>
-                  <th>Não enc.</th>
-                  <th>Outro</th>
-                  <th>Pend.</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
         </div>
 
         <div id="tab-acc" class="admin-section">
@@ -239,58 +284,241 @@
           return d.innerHTML;
         }
 
-        async function loadRelatorio() {
-          const r = await fetch('/api/relatorio', { headers: apiHeaders() });
+        async function loadDashboard() {
+          const r = await fetch('/api/admin/dashboard', { headers: apiHeaders() });
           const data = await r.json().catch(() => ({}));
           if (r.status === 429)
             throw new Error('Muitas tentativas. Aguarde alguns minutos.');
-          if (!r.ok)
-            throw new Error(data.error || 'Falha ao carregar relatório');
-          if (!data.ok)
-            throw new Error(data.error || 'Resposta inválida');
+          if (!r.ok) throw new Error(data.error || 'Falha ao carregar dashboard');
+          if (!data.ok) throw new Error(data.error || 'Resposta inválida');
           return data;
         }
 
-        function renderRep(data) {
-          const t = data.totais;
-          $('stat-grid').innerHTML =
-            '<div class="stat-box"><strong>' +
-            t.computadores +
-            '</strong><span>Total computadores</span></div>' +
-            '<div class="stat-box"><strong>' +
-            t.confirmados +
-            '</strong><span>Confirmados</span></div>' +
-            '<div class="stat-box"><strong>' +
-            t.nao_encontrados +
-            '</strong><span>Não encontrados</span></div>' +
-            '<div class="stat-box"><strong>' +
-            t.outro_local +
-            '</strong><span>Outro local</span></div>' +
-            '<div class="stat-box"><strong>' +
-            t.pendentes +
-            '</strong><span>Pendentes</span></div>';
-          $('dash-updated').textContent =
-            'Atualizado em ' + new Date().toLocaleString('pt-BR');
+        let dashRows = [];
+        let dashSort = { key: 'nome', dir: 1 };
 
-          const tb = $('table-sec').querySelector('tbody');
+        function fmtPct(v) {
+          if (v == null || Number.isNaN(v)) return '—';
+          return v + '%';
+        }
+
+        function renderDashboard(data) {
+          const g = data.globais;
+          const when = data.atualizado_em
+            ? new Date(data.atualizado_em).toLocaleString('pt-BR')
+            : new Date().toLocaleString('pt-BR');
+          $('dash-updated').textContent = 'Atualizado em ' + when;
+
+          $('dash-kpi').innerHTML =
+            '<div class="stat-box stat-box--wide"><strong>' +
+            g.computadores +
+            '</strong><span>Computadores cadastrados</span></div>' +
+            '<div class="stat-box"><strong>' +
+            fmtPct(g.percent_vistoria_feita) +
+            '</strong><span>% com vistoria registada</span></div>' +
+            '<div class="stat-box"><strong>' +
+            g.pendentes +
+            '</strong><span>Pendentes de vistoria</span></div>' +
+            '<div class="stat-box stat-box--ok"><strong>' +
+            g.confirmados +
+            '</strong><span>Confirmados</span></div>' +
+            '<div class="stat-box stat-box--no"><strong>' +
+            g.nao_encontrados +
+            '</strong><span>Não encontrados</span></div>' +
+            '<div class="stat-box stat-box--move"><strong>' +
+            g.outro_local +
+            '</strong><span>Outro local</span></div>';
+
+          const pct = g.percent_vistoria_feita || 0;
+          $('dash-pct-label').textContent = pct + '%';
+          const bar = $('dash-pct-bar');
+          bar.style.width = Math.min(100, pct) + '%';
+
+          const tot = g.computadores || 0;
+          const stack = $('dash-stack');
+          const leg = $('dash-legend');
+          if (tot <= 0) {
+            stack.innerHTML =
+              '<span class="admin-stack-empty">Sem computadores na base.</span>';
+            leg.innerHTML = '';
+          } else {
+            const parts = [
+              {
+                n: g.confirmados,
+                cls: 'admin-seg-ok',
+                lab: 'Confirmados',
+              },
+              { n: g.pendentes, cls: 'admin-seg-pend', lab: 'Pendentes' },
+              {
+                n: g.nao_encontrados,
+                cls: 'admin-seg-no',
+                lab: 'Não encontrados',
+              },
+              { n: g.outro_local, cls: 'admin-seg-move', lab: 'Outro local' },
+            ];
+            stack.innerHTML = parts
+              .map((p) => {
+                const w = (p.n / tot) * 100;
+                if (w <= 0) return '';
+                return (
+                  '<span class="admin-seg ' +
+                  p.cls +
+                  '" style="width:' +
+                  w +
+                  '%" title="' +
+                  escapeHtml(p.lab) +
+                  ': ' +
+                  p.n +
+                  '"></span>'
+                );
+              })
+              .join('');
+            leg.innerHTML = parts
+              .filter((p) => p.n > 0)
+              .map(
+                (p) =>
+                  '<li><span class="admin-leg-dot ' +
+                  p.cls +
+                  '"></span>' +
+                  escapeHtml(p.lab) +
+                  ': <strong>' +
+                  p.n +
+                  '</strong></li>'
+              )
+              .join('');
+          }
+
+          const pm = g.percent_monitores_vinculados;
+          $('dash-kpi-mon').innerHTML =
+            '<div class="stat-box"><strong>' +
+            g.monitores +
+            '</strong><span>Monitores cadastrados</span></div>' +
+            '<div class="stat-box"><strong>' +
+            fmtPct(pm) +
+            '</strong><span>% monitores com vínculo na vistoria</span></div>' +
+            '<div class="stat-box"><strong>' +
+            g.monitores_com_vinculo +
+            '</strong><span>Monitores já associados a PC</span></div>' +
+            '<div class="stat-box stat-box--warn"><strong>' +
+            g.monitores_sem_vinculo +
+            '</strong><span>Monitores sem vínculo</span></div>' +
+            '<div class="stat-box stat-box--warn"><strong>' +
+            g.pcs_confirmados_sem_monitor +
+            '</strong><span>PCs confirmados sem monitor</span></div>';
+
+          const alertEl = $('dash-alerts');
+          const lines = [];
+          if (g.pcs_confirmados_sem_monitor > 0) {
+            lines.push(
+              '<p class="admin-alert admin-alert--warn"><strong>Atenção:</strong> ' +
+                g.pcs_confirmados_sem_monitor +
+                ' computador(es) confirmado(s) na vistoria sem monitor associado — acções pendentes nas secretarias.</p>'
+            );
+          }
+          if (g.monitores_sem_vinculo > 0 && g.monitores > 0) {
+            lines.push(
+              '<p class="admin-alert admin-alert--info"><strong>Inventário de monitores:</strong> ' +
+                g.monitores_sem_vinculo +
+                ' monitor(es) ainda não ligados a um PC na etapa de monitores.</p>'
+            );
+          }
+          if (lines.length) {
+            alertEl.innerHTML = lines.join('');
+            alertEl.hidden = false;
+          } else {
+            alertEl.innerHTML = '';
+            alertEl.hidden = true;
+          }
+
+          dashRows = (data.porSecretaria || []).slice();
+          renderDashTable();
+          wireDashSort();
+        }
+
+        function dashCompare(a, b, key, type) {
+          let va = a[key];
+          let vb = b[key];
+          if (key === 'percent_mon_vinculados') {
+            va = va == null ? -1 : Number(va);
+            vb = vb == null ? -1 : Number(vb);
+          }
+          if (type === 'str') {
+            return String(va || '').localeCompare(String(vb || ''), 'pt', {
+              sensitivity: 'base',
+            });
+          }
+          return (Number(va) || 0) - (Number(vb) || 0);
+        }
+
+        function renderDashTable() {
+          const sorted = dashRows.slice().sort((a, b) => {
+            const th = $('dash-table-sec').querySelector(
+              '[data-sort="' + dashSort.key + '"]'
+            );
+            const type = th ? th.getAttribute('data-type') || 'num' : 'num';
+            const c = dashCompare(a, b, dashSort.key, type);
+            return c * dashSort.dir;
+          });
+          const tb = $('dash-table-sec').querySelector('tbody');
           tb.innerHTML = '';
-          data.porSecretaria.forEach((s) => {
+          sorted.forEach((s) => {
             const tr = document.createElement('tr');
+            const pctM = fmtPct(s.percent_mon_vinculados);
+            const rowClass =
+              s.pcs_confirmados_sem_monitor > 0 || s.mon_sem_vinculo > 0
+                ? ' admin-row-attn'
+                : '';
+            tr.className = rowClass.trim();
             tr.innerHTML =
               '<td>' +
               escapeHtml(s.nome) +
               '</td><td>' +
               s.total_pc +
               '</td><td>' +
+              fmtPct(s.percent_vistoria_feita) +
+              '</td><td>' +
               s.confirmados +
+              '</td><td>' +
+              s.pendentes +
               '</td><td>' +
               s.nao_encontrados +
               '</td><td>' +
               s.outro_local +
               '</td><td>' +
-              s.pendentes +
+              s.total_mon +
+              '</td><td>' +
+              pctM +
+              '</td><td>' +
+              (s.pcs_confirmados_sem_monitor || 0) +
+              '</td><td>' +
+              (s.mon_sem_vinculo || 0) +
               '</td>';
             tb.appendChild(tr);
+          });
+
+          $('dash-table-sec').querySelectorAll('th.sortable').forEach((th) => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.getAttribute('data-sort') === dashSort.key) {
+              th.classList.add(dashSort.dir > 0 ? 'sort-asc' : 'sort-desc');
+            }
+          });
+        }
+
+        let dashSortWired = false;
+        function wireDashSort() {
+          if (dashSortWired) return;
+          dashSortWired = true;
+          $('dash-table-sec').querySelectorAll('th.sortable').forEach((th) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+              const k = th.getAttribute('data-sort');
+              if (dashSort.key === k) dashSort.dir = -dashSort.dir;
+              else {
+                dashSort.key = k;
+                dashSort.dir = k === 'nome' ? 1 : -1;
+              }
+              renderDashTable();
+            });
           });
         }
 
@@ -492,7 +720,7 @@
                 return;
               }
               loadPc(true);
-              loadRelatorio().then(renderRep).catch(() => {});
+              loadDashboard().then(renderDashboard).catch(() => {});
             };
           });
         }
@@ -595,7 +823,7 @@
                 return;
               }
               loadMon(true);
-              loadRelatorio().then(renderRep).catch(() => {});
+              loadDashboard().then(renderDashboard).catch(() => {});
             };
           });
         }
@@ -628,6 +856,7 @@
           document.querySelectorAll('.admin-section').forEach((s) => {
             s.classList.remove('active');
           });
+          if (tab === 'dash') $('tab-dash').classList.add('active');
           if (tab === 'rep') $('tab-rep').classList.add('active');
           if (tab === 'acc') {
             $('tab-acc').classList.add('active');
@@ -671,7 +900,16 @@
               j.monitores
           );
           loadSecretariasLinks();
-          loadRelatorio().then(renderRep).catch(() => {});
+          loadDashboard().then(renderDashboard).catch(() => {});
+        };
+
+        $('btn-dash-refresh').onclick = async () => {
+          try {
+            const data = await loadDashboard();
+            renderDashboard(data);
+          } catch (e) {
+            alert(e && e.message ? e.message : 'Falha ao atualizar');
+          }
         };
 
         $('btn-admin-go').onclick = async () => {
@@ -680,17 +918,11 @@
           if (!pwd) return showErr($('admin-err'), 'Informe a senha.');
           try {
             localStorage.setItem(STORAGE_KEY, pwd);
-            const r = await fetch('/api/relatorio', { headers: apiHeaders() });
-            if (r.status === 429) {
-              localStorage.removeItem(STORAGE_KEY);
-              throw new Error('Muitas tentativas. Aguarde alguns minutos.');
-            }
-            const data = await r.json();
-            if (!r.ok || !data.ok) throw new Error(data.error || 'Resposta inválida');
+            const data = await loadDashboard();
             await loadSecretariasOpcoes();
-            renderRep(data);
+            renderDashboard(data);
             showDash();
-            switchTab('rep');
+            switchTab('dash');
           } catch (e) {
             localStorage.removeItem(STORAGE_KEY);
             showErr(
@@ -781,7 +1013,7 @@
           }
           clearPcForm();
           loadPc(true);
-          loadRelatorio().then(renderRep).catch(() => {});
+          loadDashboard().then(renderDashboard).catch(() => {});
         };
 
         $('mon-search').onclick = () => loadMon(true);
@@ -821,21 +1053,19 @@
           }
           clearMonForm();
           loadMon(true);
-          loadRelatorio().then(renderRep).catch(() => {});
+          loadDashboard().then(renderDashboard).catch(() => {});
         };
 
         (async function init() {
           const saved = getPwd();
           if (saved) {
             try {
-              const data = await loadRelatorio();
-              if (data.ok) {
-                await loadSecretariasOpcoes();
-                renderRep(data);
-                showDash();
-                switchTab('rep');
-                return;
-              }
+              const data = await loadDashboard();
+              await loadSecretariasOpcoes();
+              renderDashboard(data);
+              showDash();
+              switchTab('dash');
+              return;
             } catch (_) {}
           }
           showLogin();
