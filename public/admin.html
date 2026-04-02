@@ -231,8 +231,14 @@
 
         async function loadRelatorio() {
           const r = await fetch('/api/relatorio', { headers: apiHeaders() });
-          if (!r.ok) throw new Error('Falha ao carregar');
-          return r.json();
+          const data = await r.json().catch(() => ({}));
+          if (r.status === 429)
+            throw new Error('Muitas tentativas. Aguarde alguns minutos.');
+          if (!r.ok)
+            throw new Error(data.error || 'Falha ao carregar relatório');
+          if (!data.ok)
+            throw new Error(data.error || 'Resposta inválida');
+          return data;
         }
 
         function renderRep(data) {

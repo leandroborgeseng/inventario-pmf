@@ -672,7 +672,7 @@ function adminListParams(req) {
   const secretariaId = req.query.secretaria_id
     ? parseInt(req.query.secretaria_id, 10)
     : null;
-      const q = (req.query.q || '').trim();
+  const q = (req.query.q || '').trim();
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
   const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
   return { secretariaId, q, limit, offset };
