@@ -3,7 +3,7 @@
 /**
  * Importa computadores.xlsx e monitores.xlsx (raiz do projeto) para SQLite.
  * Colunas esperadas (cabeçalhos flexíveis, ver NORMALIZE abaixo):
- * computadores: nome_maquina, patrimonio, secretaria, localizacao, status_ad
+ * computadores: nome_maquina, patrimonio, secretaria, localizacao, status_ad, data_aquisicao
  * monitores: patrimonio, modelo, secretaria
  *
  * Secretarias existentes (mesmo nome) mantêm token e senha.

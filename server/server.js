@@ -1165,7 +1165,7 @@ app.get('/api/export', async (req, res) => {
       patrimonio_pc: r.pc_patrimonio || '',
       localizacao: r.localizacao || '',
       data_aquisicao: r.data_aquisicao || '',
-      idade_aquisicao: idadeAquisicaoDeISO(r.data_aquisicao) || '',
+      idade_em_anos: idadeAquisicaoDeISO(r.data_aquisicao) || '',
       secretaria: r.secretaria,
       status: r.status,
       observacao: r.observacao || '',

@@ -150,13 +150,13 @@
   }
 
   function metaIdadeHtml(c) {
-    if (!c.idade_aquisicao && !c.data_aquisicao) return '';
-    let t = '<p class="meta">Idade (aquisição): ';
-    if (c.idade_aquisicao)
-      t += '<strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
-    if (c.data_aquisicao) {
-      const br = formatarDataBR(c.data_aquisicao);
-      if (br) t += ' · ' + escapeHtml(br);
+    if (!c.data_aquisicao && !c.idade_aquisicao) return '';
+    const br = c.data_aquisicao ? formatarDataBR(c.data_aquisicao) : '';
+    let t = '<p class="meta">';
+    if (br) t += 'Data aquisição: <strong>' + escapeHtml(br) + '</strong>';
+    if (c.idade_aquisicao) {
+      if (br) t += ' · ';
+      t += 'Idade: <strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
     }
     return t + '</p>';
   }
@@ -304,13 +304,15 @@
       escapeHtml(pat) +
       '</strong> · Local: ' +
       escapeHtml(loc);
-    if (c.idade_aquisicao || c.data_aquisicao) {
-      resumo += '<br><span class="meta">Idade (aquisição): ';
-      if (c.idade_aquisicao)
-        resumo += '<strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
+    if (c.data_aquisicao || c.idade_aquisicao) {
+      resumo += '<br><span class="meta">';
       if (c.data_aquisicao) {
         const br = formatarDataBR(c.data_aquisicao);
-        if (br) resumo += ' · ' + escapeHtml(br);
+        if (br) resumo += 'Data aquisição: <strong>' + escapeHtml(br) + '</strong>';
+      }
+      if (c.idade_aquisicao) {
+        if (c.data_aquisicao && formatarDataBR(c.data_aquisicao)) resumo += ' · ';
+        resumo += 'Idade: <strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
       }
       resumo += '</span>';
     }
@@ -447,13 +449,15 @@
       escapeHtml(pat) +
       '</strong> · Local: ' +
       escapeHtml(c.localizacao || '—');
-    if (c.idade_aquisicao || c.data_aquisicao) {
-      sub += '<br><span class="muted">Idade (aquisição): ';
-      if (c.idade_aquisicao)
-        sub += '<strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
+    if (c.data_aquisicao || c.idade_aquisicao) {
+      sub += '<br><span class="muted">';
       if (c.data_aquisicao) {
         const br = formatarDataBR(c.data_aquisicao);
-        if (br) sub += ' · ' + escapeHtml(br);
+        if (br) sub += 'Data aquisição: <strong>' + escapeHtml(br) + '</strong>';
+      }
+      if (c.idade_aquisicao) {
+        if (c.data_aquisicao && formatarDataBR(c.data_aquisicao)) sub += ' · ';
+        sub += 'Idade: <strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
       }
       sub += '</span>';
     }

@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * Texto em português a partir de data_aquisicao (YYYY-MM-DD).
+ * Idade em anos completos a partir de data_aquisicao (YYYY-MM-DD).
+ * Sem meses — apenas anos corridos ou "Menos de 1 ano".
  */
 function idadeAquisicaoDeISO(iso) {
   if (!iso || typeof iso !== 'string') return '';
@@ -19,20 +20,14 @@ function idadeAquisicaoDeISO(iso) {
   if (inicio > hoje) return 'Data futura';
 
   let anos = hoje.getFullYear() - inicio.getFullYear();
-  let meses = hoje.getMonth() - inicio.getMonth();
-  if (hoje.getDate() < inicio.getDate()) meses--;
-  if (meses < 0) {
-    anos--;
-    meses += 12;
-  }
-  if (anos < 0) return '';
+  const md = hoje.getMonth() - inicio.getMonth();
+  const dd = hoje.getDate() - inicio.getDate();
+  if (md < 0 || (md === 0 && dd < 0)) anos--;
 
-  if (anos === 0 && meses === 0) return 'Menos de 1 mês';
-  if (anos === 0) return meses === 1 ? '1 mês' : `${meses} meses`;
-  if (meses === 0) return anos === 1 ? '1 ano' : `${anos} anos`;
-  return `${anos} ${anos === 1 ? 'ano' : 'anos'} e ${meses} ${
-    meses === 1 ? 'mês' : 'meses'
-  }`;
+  if (anos < 0) return '';
+  if (anos === 0) return 'Menos de 1 ano';
+  if (anos === 1) return '1 ano';
+  return `${anos} anos`;
 }
 
 module.exports = { idadeAquisicaoDeISO };
