@@ -219,7 +219,7 @@ function inferSecretariaFromText(u) {
       'GABINETE DO PREFEITO',
     ],
     [
-      /EDUCA(C|Ç)(O|A)|\bEMEB\b|\bEMEI\b|CRECHE|\bESCOLA\b|\bUAB\b|UNIVERSIDADE\s+ABERTA/i,
+      /EDUCACAO|EDUCA(C|Ç)O|\bEMEB\b|\bEMEI\b|CRECHE|\bESCOLA\b|\bUAB\b|UNIVERSIDADE\s+ABERTA/i,
       'SECRETARIA MUN. DE EDUCAÇÃO',
     ],
     [
