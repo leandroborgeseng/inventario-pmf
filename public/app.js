@@ -406,7 +406,9 @@
     const barTrack = $('inv-dash-progressbar');
     const cap = $('inv-dash-caption');
     const stats = $('inv-dash-stats');
+    const statsMon = $('inv-dash-stats-mon');
     const monEl = $('inv-dash-mon');
+    const alertEl = $('inv-dash-alert');
 
     if (bar) bar.style.width = pct + '%';
     if (barTrack) {
@@ -423,16 +425,40 @@
           (r.confirmados || 0) +
           (r.nao_encontrado || 0) +
           (r.outro_local || 0);
-        cap.textContent =
+        const mTot = r.monitores_total != null ? Number(r.monitores_total) : 0;
+        const mFalta =
+          r.monitores_sem_vinculo != null ? Number(r.monitores_sem_vinculo) : 0;
+        let t =
           reg +
           ' de ' +
           total +
-          ' equipamentos já têm registo de vistoria (' +
+          ' computadores já têm registo de vistoria (' +
           pct +
-          '%). ' +
-          (r.pendentes
-            ? 'Faltam ' + r.pendentes + ' na aba «A vistoriar».'
-            : 'Todas as linhas foram tratadas.');
+          '%). ';
+        if (r.pendentes) {
+          t +=
+            'Faltam **' +
+            r.pendentes +
+            ' computador(es)** por inventariar (aba «A vistoriar»). ';
+        } else {
+          t += 'Todos os computadores foram tratados. ';
+        }
+        if (mTot > 0) {
+          if (mFalta > 0) {
+            t +=
+              'Faltam associar **' +
+              mFalta +
+              ' de ' +
+              mTot +
+              ' monitor(es)** na vistoria (ligação ao confirmar cada PC). ';
+          } else {
+            t +=
+              'Todos os **' +
+              mTot +
+              ' monitor(es)** do cadastro já têm vínculo na vistoria. ';
+          }
+        }
+        cap.innerHTML = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       }
     }
 
@@ -452,20 +478,78 @@
           );
         }
         stats.innerHTML =
-          cell(r.pendentes || 0, 'A fazer', 'stat-pend') +
+          cell(r.pendentes || 0, 'Por inventariar', 'stat-pend') +
           cell(r.confirmados || 0, 'Confirmados', 'stat-ok') +
           cell(r.outro_local || 0, 'Outro local', 'stat-warn') +
           cell(r.nao_encontrado || 0, 'Não encontrado', 'stat-no');
       }
     }
 
+    if (statsMon) {
+      const m = r.monitores_total != null ? Number(r.monitores_total) : 0;
+      if (m === 0) {
+        statsMon.innerHTML = '';
+      } else {
+        function cellMon(n, lbl, cls) {
+          return (
+            '<div class="inv-dash-stat' +
+            (cls ? ' ' + cls : '') +
+            '"><span class="inv-dash-num">' +
+            escapeHtml(String(n)) +
+            '</span><span class="inv-dash-lbl">' +
+            escapeHtml(lbl) +
+            '</span></div>'
+          );
+        }
+        const falta =
+          r.monitores_sem_vinculo != null ? Number(r.monitores_sem_vinculo) : m;
+        const ok =
+          r.monitores_com_vinculo != null
+            ? Number(r.monitores_com_vinculo)
+            : Math.max(0, m - falta);
+        statsMon.innerHTML =
+          cellMon(falta, 'Falta inventariar (sem vínculo)', 'stat-pend') +
+          cellMon(ok, 'Já associados a um PC', 'stat-ok');
+      }
+    }
+
+    if (alertEl) {
+      const nAlert =
+        r.pcs_confirmados_sem_monitor != null
+          ? Number(r.pcs_confirmados_sem_monitor)
+          : 0;
+      if (nAlert > 0) {
+        alertEl.hidden = false;
+        alertEl.innerHTML =
+          '<strong>Atenção:</strong> ' +
+          escapeHtml(String(nAlert)) +
+          ' computador(es) está(ão) <strong>confirmado(s)</strong> mas <strong>sem monitor escolhido</strong> na vistoria. Abra «Ajustar monitores» em cada um ou use a lista «Já inventariados».';
+      } else {
+        alertEl.hidden = true;
+        alertEl.innerHTML = '';
+      }
+    }
+
     if (monEl) {
       const m = r.monitores_total != null ? Number(r.monitores_total) : 0;
-      monEl.textContent =
-        m === 0
-          ? 'Nenhum monitor associado a esta secretaria no cadastro.'
-          : String(m) +
-            ' monitor(es) no cadastro. Use «Ver monitores» para vínculos com a vistoria.';
+      const pMon =
+        r.percent_monitores_vinculados != null &&
+        r.percent_monitores_vinculados !== ''
+          ? Number(r.percent_monitores_vinculados)
+          : null;
+      if (m === 0) {
+        monEl.textContent =
+          'Nenhum monitor no cadastro desta secretaria. O pormenor dos vínculos está em «Ver monitores».';
+      } else {
+        monEl.textContent =
+          'Cadastro: ' +
+          m +
+          ' monitor(es)' +
+          (pMon != null && !Number.isNaN(pMon)
+            ? ' · ' + pMon + '% já associados a um PC na vistoria.'
+            : '.') +
+          ' Pormenor: «Ver monitores».';
+      }
     }
   }
 

@@ -155,6 +155,50 @@ function buildSecretariaResumo(rows, monitoresTotal) {
   };
 }
 
+/** Contagens extra para o dashboard: monitores sem vínculo na vistoria; PCs confirmados sem monitor. */
+async function buildSecretariaResumoMonitores(secretariaId, monitoresTotal) {
+  const semRow = await dbGet(
+    `SELECT COUNT(*) AS c FROM monitores m
+     WHERE m.secretaria_id = ?
+     AND NOT EXISTS (
+       SELECT 1 FROM auditoria_monitores am
+       INNER JOIN auditoria a ON a.id = am.auditoria_id
+       INNER JOIN computadores c ON c.id = a.computador_id
+       WHERE am.monitor_id = m.id AND am.confirmado = 1
+         AND c.secretaria_id = m.secretaria_id
+     )`,
+    [secretariaId]
+  );
+  const sem = semRow && semRow.c != null ? Number(semRow.c) : 0;
+
+  const pcSemMonRow = await dbGet(
+    `SELECT COUNT(*) AS c FROM auditoria a
+     INNER JOIN computadores c ON c.id = a.computador_id
+     WHERE c.secretaria_id = ?
+       AND a.confirmado = 'confirmado'
+       AND NOT EXISTS (
+         SELECT 1 FROM auditoria_monitores am
+         WHERE am.auditoria_id = a.id AND am.confirmado = 1
+       )`,
+    [secretariaId]
+  );
+  const pcsSemMonitor =
+    pcSemMonRow && pcSemMonRow.c != null ? Number(pcSemMonRow.c) : 0;
+
+  const comVinculo = Math.max(0, monitoresTotal - sem);
+  const pctMon =
+    monitoresTotal > 0
+      ? Math.round((comVinculo / monitoresTotal) * 1000) / 10
+      : null;
+
+  return {
+    monitores_sem_vinculo: sem,
+    monitores_com_vinculo: comVinculo,
+    percent_monitores_vinculados: pctMon,
+    pcs_confirmados_sem_monitor: pcsSemMonitor,
+  };
+}
+
 /** Nome na vistoria: só letras (sem acento) e dígitos, maiúsculas — alinhado ao cliente. */
 function normalizeNomeMaquinaValor(raw) {
   return String(raw || '')
@@ -376,7 +420,10 @@ app.get('/api/computadores/:token', async (req, res) => {
       [s.id]
     );
     const monitoresTotal = mCount && mCount.c != null ? Number(mCount.c) : 0;
-    const resumo = buildSecretariaResumo(rows, monitoresTotal);
+    const resumo = {
+      ...buildSecretariaResumo(rows, monitoresTotal),
+      ...(await buildSecretariaResumoMonitores(s.id, monitoresTotal)),
+    };
 
     res.json({
       ok: true,
