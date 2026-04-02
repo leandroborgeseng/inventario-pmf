@@ -76,32 +76,51 @@ function pickRow(row, aliases) {
   return '';
 }
 
+/**
+ * Número serial de data do Excel → YYYY-MM-DD.
+ * pickRow() converte células numéricas para string; "44927" deve ser reconhecido.
+ */
+function parseExcelSerialAsIso(n) {
+  if (typeof n !== 'number' || !isFinite(n)) return null;
+  const whole = Math.floor(n);
+  if (whole < 1 || whole >= 10000000) return null;
+  if (XLSX.SSF && typeof XLSX.SSF.parse_date_code === 'function') {
+    try {
+      const dc = XLSX.SSF.parse_date_code(n);
+      if (dc && dc.y >= 1900 && dc.y <= 2100) {
+        const mm = String(dc.m).padStart(2, '0');
+        const dd = String(dc.d).padStart(2, '0');
+        return `${dc.y}-${mm}-${dd}`;
+      }
+    } catch (_) {
+      /* continua */
+    }
+  }
+  const epochMs = Date.UTC(1899, 11, 30);
+  const ms = epochMs + whole * 86400000;
+  const dt = new Date(ms);
+  if (!isNaN(dt.getTime())) {
+    const y = dt.getUTCFullYear();
+    if (y >= 1900 && y <= 2100) return dt.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
 /** Normaliza data de aquisição da planilha para YYYY-MM-DD ou null. */
 function parseDataAquisicaoVal(raw) {
   if (raw == null || raw === '') return null;
   if (raw instanceof Date && !isNaN(+raw))
     return raw.toISOString().slice(0, 10);
   if (typeof raw === 'number' && isFinite(raw)) {
-    if (raw > 20000 && raw < 1000000) {
-      try {
-        const dc = XLSX.SSF && XLSX.SSF.parse_date_code(raw);
-        if (dc && dc.y >= 1900 && dc.y <= 2100) {
-          const mm = String(dc.m).padStart(2, '0');
-          const dd = String(dc.d).padStart(2, '0');
-          return `${dc.y}-${mm}-${dd}`;
-        }
-      } catch (_) {
-        /* continua */
-      }
-      const epochMs = Date.UTC(1899, 11, 30);
-      const ms = epochMs + Math.floor(raw) * 86400000;
-      const dt = new Date(ms);
-      if (!isNaN(dt.getTime()) && dt.getUTCFullYear() >= 1900)
-        return dt.toISOString().slice(0, 10);
-    }
+    return parseExcelSerialAsIso(raw);
   }
+
   const s = String(raw).trim();
   if (!s) return null;
+
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
   const br = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
   if (br) {
     const day = parseInt(br[1], 10);
@@ -111,8 +130,24 @@ function parseDataAquisicaoVal(raw) {
     const dt = new Date(year, month - 1, day);
     if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
   }
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  /* Só período com ano (ex.: coluna "Ano") */
+  const yOnly = s.match(/^(\d{4})$/);
+  if (yOnly) {
+    const y = parseInt(yOnly[1], 10);
+    if (y >= 1900 && y <= 2100) return `${y}-01-01`;
+  }
+
+  /*
+   * Só dígitos (e opcional parte decimal): típico serial Excel como texto —
+   * antes isto falhava porque vínha "44927" após pickRow().
+   */
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    const isoSerial = parseExcelSerialAsIso(n);
+    if (isoSerial) return isoSerial;
+  }
+
   const tryDt = new Date(s);
   if (!isNaN(tryDt.getTime())) return tryDt.toISOString().slice(0, 10);
   return null;
@@ -423,6 +458,9 @@ async function main() {
     'data_aquisicao',
     'data aquisicao',
     'data aquisição',
+    'data_da_aquisicao',
+    'data da aquisicao',
+    'data da aquisição',
     'dt_aquisicao',
     'dt aquisicao',
     'dt aquisição',
@@ -434,10 +472,27 @@ async function main() {
     'data de aquisição',
     'dt aquis',
     'dtaquisicao',
+    'dmaquisicao',
+    'dtcompra',
+    'dt compra',
+    'data_compra',
+    'data compra',
+    'dt_entrada',
+    'dt entrada',
+    'data_entrada',
+    'data entrada',
+    'ano_aquisicao',
+    'ano aquisicao',
+    'ano aquisição',
+    'período aquisição',
+    'periodo aquisicao',
+    'data cadastro',
+    'dt_cadastro',
   ];
 
   let nPc = 0;
   let nPcSkip = 0;
+  let nPcComData = 0;
   for (const r of rowsPc) {
     const secretariaNome = pickRow(r, aliasSecPc);
     if (!secretariaNome) {
@@ -454,6 +509,7 @@ async function main() {
     const data_aquisicao = dataRaw
       ? parseDataAquisicaoVal(dataRaw)
       : null;
+    if (data_aquisicao) nPcComData++;
 
     await dbRun(
       db,
@@ -515,6 +571,18 @@ async function main() {
     nPc,
     nPcSkip ? `(ignorados sem Secretária: ${nPcSkip})` : ''
   );
+  console.log(
+    '  → Com data de aquisição (idade no app):',
+    nPcComData,
+    'de',
+    nPc,
+    nPc ? '(' + Math.round((nPcComData / nPc) * 100) + '%)' : ''
+  );
+  if (nPc > 0 && nPcComData === 0) {
+    console.warn(
+      '  ⚠ Nenhuma data importada — confira o cabeçalho da coluna (ex.: «Data aquisição», «Dt. Aquisição») e se as células estão como data/número no Excel, não como texto inválido.'
+    );
+  }
   console.log(
     'Monitores:',
     nMon,
