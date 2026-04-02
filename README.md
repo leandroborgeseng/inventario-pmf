@@ -23,15 +23,39 @@ npm run import
 
 ## Railway (produção)
 
-**Checklist — sem volume persistente, cada deploy pode apagar todas as vistorias:**
+### Criar o volume (passo a passo)
 
-1. **Volume:** adicione um **Volume** no serviço e monte em **`/data`**. Com variáveis típicas do Railway, o banco padrão é **`/data/database.sqlite`** (ou defina `DB_PATH` dentro do volume).
-2. Variáveis: `ADMIN_SENHA` (forte), `PORT` (automático). **`IMPORT_DEFAULT_SENHA`** — senha das secretarias novas no primeiro import.
-3. Opcional **`REQUIRE_PERSISTENT_DB=true`:** se `DB_PATH` cair fora de `/data`, o processo **não sobe** — evita produção sem disco persistente.
-4. **`PUBLIC_URL`** / **`PUBLIC_BASE_URL`:** links completos no admin.
-5. **Backup:** no admin, **«Backup do banco (.sqlite)»** — guarde cópias fora do Railway (recomendado após marcos ou antes de «Reimportar planilhas»).
-6. Tokens por secretaria são **determinísticos** (`SECRETARIA_TOKEN_SALT` opcional). Os dados de auditoria ficam só no SQLite persistido (e nos backups).
-7. **Importar o Excel no servidor:** garanta os `.xlsx` e rode o import, por exemplo:
+A interface do Railway muda com o tempo; o essencial é **um disco persistente montado em `/data`**, onde ficará `database.sqlite`.
+
+1. Abra o **projeto** e o **serviço** que executa esta app Node.
+2. Vá a **Settings** (Configurações) do serviço e procure **Volumes** (ou **Add volume** / **Persistent storage**).
+3. Crie um volume novo e defina o **caminho de montagem (mount path)** exatamente como **`/data`**.
+4. Escolha o tamanho (ex.: 1–5 GB, conforme espaço para Excel + SQLite + margem).
+5. Guarde e faça um **Redeploy** do serviço, se o Railway pedir, para o volume entrar em vigor.
+6. Variáveis (mínimo): `ADMIN_SENHA`, `IMPORT_DEFAULT_SENHA`, `PUBLIC_URL` (recomendado). Não é obrigatório definir `DB_PATH` se usar o padrão: com deteção Railway o ficheiro é **`/data/database.sqlite`**.
+7. **Primeira subida com banco vazio:** o import automático ao arrancar está **desligado por defeito** no Railway. Ou define **`AUTO_IMPORT_ON_START=true`** temporariamente, ou corre `npm run import` via [Railway CLI](https://docs.railway.com/develop/cli), ou usa **«Reimportar planilhas»** no admin (com Excel disponível no container/volume).
+8. Opcional: **`REQUIRE_PERSISTENT_DB=true`** — o processo **não arranca** se o `DB_PATH` não for reconhecido como caminho persistente (ex.: ainda a apontar para disco da imagem).
+
+**Verificação:** após vistoriar um equipamento, faça um novo deploy; os dados devem manter-se. Use **`GET /api/health`** (resposta `db: true`) em monitorização ou health check.
+
+### Comportamento de segurança e carga
+
+- Limite de falhas por IP em **`/api/login-token`** e nas rotas de **admin** (HTTP 429 após várias senhas erradas; configurável por `LOGIN_FAIL_*` e `ADMIN_FAIL_*`).
+- **`GET /api/health`:** `ok`, `db`, `version`, `uptime` — sem autenticação.
+- **`ADMIN_SENHA`:** no Railway, aviso no log se for curta; com **`ENFORCE_STRONG_ADMIN_SENHA=true`** o arranque falha abaixo de `ADMIN_SENHA_MIN_LENGTH` (predefinição 12).
+- **Export Excel:** até **`EXPORT_MAX_ROWS`** linhas (predefinição 100000); acima disso responde 413.
+
+**Checklist rápido**
+
+1. Volume em **`/data`** + redeploy.
+2. `ADMIN_SENHA` forte; opcional `ENFORCE_STRONG_ADMIN_SENHA=true`.
+3. `IMPORT_DEFAULT_SENHA`, `PUBLIC_URL`.
+4. Primeiro import manual ou `AUTO_IMPORT_ON_START=true` só quando necessário.
+5. Backups periódicos pelo admin (**Backup do banco .sqlite**).
+
+**Importar o Excel no servidor** (após volume e variáveis):
+
+1. Garanta os `.xlsx` e rode o import, por exemplo:
    - [Railway CLI](https://docs.railway.com/develop/cli): `railway run --service <nome> -- npm run import`
    - Prefira planilhas no volume (ex.: `/data/`) e `COMPUTADORES_XLSX` / `MONITORES_XLSX` apontando para esses caminhos.
 

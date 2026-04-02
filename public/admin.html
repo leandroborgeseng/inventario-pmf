@@ -654,15 +654,23 @@
           if (!pwd) return showErr($('admin-err'), 'Informe a senha.');
           try {
             localStorage.setItem(STORAGE_KEY, pwd);
-            const data = await loadRelatorio();
-            if (!data.ok) throw new Error('Resposta inválida');
+            const r = await fetch('/api/relatorio', { headers: apiHeaders() });
+            if (r.status === 429) {
+              localStorage.removeItem(STORAGE_KEY);
+              throw new Error('Muitas tentativas. Aguarde alguns minutos.');
+            }
+            const data = await r.json();
+            if (!r.ok || !data.ok) throw new Error(data.error || 'Resposta inválida');
             await loadSecretariasOpcoes();
             renderRep(data);
             showDash();
             switchTab('rep');
-          } catch {
+          } catch (e) {
             localStorage.removeItem(STORAGE_KEY);
-            showErr($('admin-err'), 'Senha inválida ou erro de rede.');
+            showErr(
+              $('admin-err'),
+              e && e.message ? e.message : 'Senha inválida ou erro de rede.'
+            );
           }
         };
 
@@ -671,7 +679,8 @@
           if (!pwd) return showLogin();
           const r = await fetch('/api/export?adminSenha=' + encodeURIComponent(pwd));
           if (!r.ok) {
-            alert('Falha na exportação');
+            const j = await r.json().catch(() => ({}));
+            alert(j.error || (r.status === 429 ? 'Muitas tentativas — aguarde.' : 'Falha na exportação'));
             return;
           }
           const blob = await r.blob();

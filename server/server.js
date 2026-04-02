@@ -14,10 +14,37 @@ const PORT = process.env.PORT || 3000;
 const {
   resolveDbPath,
   logDbPersistenceAndMaybeExit,
+  isRailwayLike,
 } = require('./db-config');
+const { createFailLimiter } = require('./fail-limiter');
 const DB_PATH = resolveDbPath();
 process.env.DB_PATH = DB_PATH;
 logDbPersistenceAndMaybeExit(DB_PATH);
+
+function logStrongAdminPasswordPolicy() {
+  const pwd = process.env.ADMIN_SENHA || '';
+  const min = Math.max(parseInt(process.env.ADMIN_SENHA_MIN_LENGTH || '12', 10), 8);
+  if (!pwd) {
+    console.warn(
+      '[app] ADMIN_SENHA não definida — o painel /admin ficará inacessível até configurar.'
+    );
+    return;
+  }
+  if (isRailwayLike() && pwd.length < min) {
+    const msg = `[app] ADMIN_SENHA com ${pwd.length} caracteres; em produção use pelo menos ${min}.`;
+    if (
+      ['1', 'true', 'yes'].includes(
+        String(process.env.ENFORCE_STRONG_ADMIN_SENHA || '').toLowerCase()
+      )
+    ) {
+      console.error(msg + ' Encerrando (ENFORCE_STRONG_ADMIN_SENHA).');
+      process.exit(1);
+    }
+    console.warn(msg);
+  }
+}
+
+logStrongAdminPasswordPolicy();
 
 function ensureDbDir() {
   const dir = path.dirname(DB_PATH);
@@ -106,6 +133,45 @@ function validateAdmin(req) {
   return Boolean(expected && pwd === expected);
 }
 
+const loginFailLimiter = createFailLimiter({
+  maxFails: Math.max(5, parseInt(process.env.LOGIN_FAIL_MAX || '30', 10)),
+  windowMs: Math.max(
+    60000,
+    parseInt(process.env.LOGIN_FAIL_WINDOW_MS || String(15 * 60 * 1000), 10)
+  ),
+});
+
+const adminFailLimiter = createFailLimiter({
+  maxFails: Math.max(5, parseInt(process.env.ADMIN_FAIL_MAX || '40', 10)),
+  windowMs: Math.max(
+    60000,
+    parseInt(process.env.ADMIN_FAIL_WINDOW_MS || String(15 * 60 * 1000), 10)
+  ),
+});
+
+function clientIp(req) {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function assertAdmin(req, res) {
+  const ip = clientIp(req);
+  if (adminFailLimiter.isBlocked(ip)) {
+    res.status(429).json({
+      ok: false,
+      error:
+        'Muitas tentativas de acesso ao admin. Aguarde alguns minutos e tente de novo.',
+    });
+    return false;
+  }
+  if (!validateAdmin(req)) {
+    adminFailLimiter.recordFailure(ip);
+    res.status(401).json({ ok: false, error: 'Não autorizado' });
+    return false;
+  }
+  adminFailLimiter.recordSuccess(ip);
+  return true;
+}
+
 /** URL pública para links no admin (Railway, etc.). Aceita vários nomes de variável. */
 function resolveStaticPublicUrl() {
   const raw =
@@ -154,6 +220,22 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '2mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
+/** Saúde do serviço e do SQLite (monitorização / load balancer). Sem autenticação. */
+app.get('/api/health', async (req, res) => {
+  try {
+    await dbGet('SELECT 1 AS o');
+    const pkg = require('../package.json');
+    res.json({
+      ok: true,
+      db: true,
+      version: pkg.version || '1.0.0',
+      uptime: process.uptime(),
+    });
+  } catch (e) {
+    res.status(503).json({ ok: false, db: false, error: e.message });
+  }
+});
+
 const publicDir = path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir));
 
@@ -167,10 +249,18 @@ app.get('/admin', (req, res) => {
 
 /** POST /api/login-token { token, senha } */
 app.post('/api/login-token', async (req, res) => {
+  const ip = clientIp(req);
   try {
+    if (loginFailLimiter.isBlocked(ip)) {
+      return res.status(429).json({
+        ok: false,
+        error: 'Muitas tentativas de login. Aguarde alguns minutos.',
+      });
+    }
     const { token, senha } = req.body || {};
     const s = await validateSecretariaAccess(token, senha);
     if (!s) {
+      loginFailLimiter.recordFailure(ip);
       try {
         const n = await dbGet('SELECT COUNT(*) AS c FROM secretarias');
         if (n && n.c === 0) {
@@ -189,6 +279,7 @@ app.post('/api/login-token', async (req, res) => {
           'Token ou senha incorretos. Confira o link completo (copie de novo do admin), a senha atual (sem espaço no começo/fim) e se a base foi importada.',
       });
     }
+    loginFailLimiter.recordSuccess(ip);
     res.json({
       ok: true,
       secretaria: { id: s.id, nome: s.nome },
@@ -466,8 +557,7 @@ app.post('/api/auditoria-monitores', async (req, res) => {
 /** GET /api/admin/secretarias — links e senhas */
 app.get('/api/admin/secretarias', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
 
     const base = publicBaseUrl(req);
     const rows = await dbAll(
@@ -502,8 +592,7 @@ app.get('/api/admin/secretarias', async (req, res) => {
  */
 app.post('/api/admin/importar-planilhas', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
 
     const comp =
       process.env.COMPUTADORES_XLSX ||
@@ -543,8 +632,7 @@ app.post('/api/admin/importar-planilhas', async (req, res) => {
 /** GET /api/admin/backup-sqlite — cópia do arquivo SQLite (WAL consolidado). */
 app.get('/api/admin/backup-sqlite', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     if (!fs.existsSync(DB_PATH))
       return res.status(404).json({ ok: false, error: 'Banco não encontrado' });
     await dbRun('PRAGMA wal_checkpoint(FULL)');
@@ -563,8 +651,7 @@ app.get('/api/admin/backup-sqlite', async (req, res) => {
 /** PATCH /api/admin/secretaria/:id — { adminSenha, senha } */
 app.patch('/api/admin/secretaria/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const { senha } = req.body || {};
     if (!senha || String(senha).trim() === '')
       return res.status(400).json({ ok: false, error: 'senha obrigatória' });
@@ -594,8 +681,7 @@ function adminListParams(req) {
 /** GET /api/admin/computador/:id */
 app.get('/api/admin/computador/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     const r = await dbGet(
       `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
@@ -629,8 +715,7 @@ app.get('/api/admin/computador/:id', async (req, res) => {
 /** GET /api/admin/monitor/:id */
 app.get('/api/admin/monitor/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     const r = await dbGet(
       `SELECT m.id, m.patrimonio, m.modelo, m.secretaria_id, s.nome AS secretaria_nome
@@ -649,8 +734,7 @@ app.get('/api/admin/monitor/:id', async (req, res) => {
 /** GET /api/admin/computadores */
 app.get('/api/admin/computadores', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
 
     const { secretariaId, q, limit, offset } = adminListParams(req);
     const params = [];
@@ -708,8 +792,7 @@ app.get('/api/admin/computadores', async (req, res) => {
 /** GET /api/admin/monitores */
 app.get('/api/admin/monitores', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
 
     const { secretariaId, q, limit, offset } = adminListParams(req);
     const params = [];
@@ -754,8 +837,7 @@ app.get('/api/admin/monitores', async (req, res) => {
 /** GET /api/admin/secretarias-ids — lista mínima para selects */
 app.get('/api/admin/secretarias-opcoes', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const rows = await dbAll(
       'SELECT id, nome FROM secretarias ORDER BY nome COLLATE NOCASE'
     );
@@ -768,8 +850,7 @@ app.get('/api/admin/secretarias-opcoes', async (req, res) => {
 /** POST /api/admin/computador */
 app.post('/api/admin/computador', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const b = req.body || {};
     const sid = parseInt(b.secretaria_id, 10);
     if (!sid)
@@ -796,8 +877,7 @@ app.post('/api/admin/computador', async (req, res) => {
 /** PATCH /api/admin/computador/:id */
 app.patch('/api/admin/computador/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     const b = req.body || {};
     const pc = await dbGet(
@@ -846,8 +926,7 @@ app.patch('/api/admin/computador/:id', async (req, res) => {
 /** DELETE /api/admin/computador/:id */
 app.delete('/api/admin/computador/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     const aud = await dbAll('SELECT id FROM auditoria WHERE computador_id = ?', [
       id,
@@ -868,8 +947,7 @@ app.delete('/api/admin/computador/:id', async (req, res) => {
 /** POST /api/admin/monitor */
 app.post('/api/admin/monitor', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const b = req.body || {};
     const sid = parseInt(b.secretaria_id, 10);
     if (!sid)
@@ -889,8 +967,7 @@ app.post('/api/admin/monitor', async (req, res) => {
 /** PATCH /api/admin/monitor/:id */
 app.patch('/api/admin/monitor/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     const b = req.body || {};
     const row = await dbGet('SELECT * FROM monitores WHERE id = ?', [id]);
@@ -920,8 +997,7 @@ app.patch('/api/admin/monitor/:id', async (req, res) => {
 /** DELETE /api/admin/monitor/:id */
 app.delete('/api/admin/monitor/:id', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ ok: false, error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
     const id = parseInt(req.params.id, 10);
     await dbRun('DELETE FROM auditoria_monitores WHERE monitor_id = ?', [id]);
     const r = await dbRun('DELETE FROM monitores WHERE id = ?', [id]);
@@ -936,8 +1012,7 @@ app.delete('/api/admin/monitor/:id', async (req, res) => {
 /** GET /api/relatorio — admin */
 app.get('/api/relatorio', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
 
     const totalPc = await dbGet('SELECT COUNT(*) AS n FROM computadores');
     const byStatus = await dbAll(
@@ -987,8 +1062,12 @@ app.get('/api/relatorio', async (req, res) => {
 /** GET /api/export — admin — arquivo inventario-auditado.xlsx */
 app.get('/api/export', async (req, res) => {
   try {
-    if (!validateAdmin(req))
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!assertAdmin(req, res)) return;
+
+    const exportMax = Math.min(
+      Math.max(parseInt(process.env.EXPORT_MAX_ROWS || '100000', 10), 1000),
+      500000
+    );
 
     const rows = await dbAll(
       `SELECT c.nome_maquina, c.patrimonio AS pc_patrimonio, c.localizacao,
@@ -1000,36 +1079,54 @@ app.get('/api/export', async (req, res) => {
        FROM computadores c
        JOIN secretarias s ON s.id = c.secretaria_id
        LEFT JOIN auditoria a ON a.computador_id = c.id
-       ORDER BY s.nome COLLATE NOCASE, c.nome_maquina`
+       ORDER BY s.nome COLLATE NOCASE, c.nome_maquina
+       LIMIT ?`,
+      [exportMax + 1]
     );
 
-    const out = [];
-    for (const r of rows) {
-      let monitoresTxt = '';
-      if (r.auditoria_id) {
-        const ms = await dbAll(
-          `SELECT m.patrimonio, m.modelo, am.confirmado
-           FROM auditoria_monitores am
-           JOIN monitores m ON m.id = am.monitor_id
-           WHERE am.auditoria_id = ? AND am.confirmado = 1
-           ORDER BY m.patrimonio`,
-          [r.auditoria_id]
-        );
-        monitoresTxt = ms
-          .map((m) => `${m.patrimonio}${m.modelo ? ` (${m.modelo})` : ''}`)
-          .join('; ');
-      }
-      out.push({
-        computador: r.nome_maquina || '',
-        patrimonio_pc: r.pc_patrimonio || '',
-        localizacao: r.localizacao || '',
-        secretaria: r.secretaria,
-        status: r.status,
-        observacao: r.observacao || '',
-        data_auditoria: r.data_auditoria || '',
-        monitores_confirmados: monitoresTxt,
+    if (rows.length > exportMax) {
+      return res.status(413).json({
+        ok: false,
+        error: `Exportação limitada a ${exportMax} linhas (EXPORT_MAX_ROWS). Reduza o escopo ou contacte a TI.`,
       });
     }
+
+    const audIds = [
+      ...new Set(
+        rows.map((r) => r.auditoria_id).filter((id) => id != null)
+      ),
+    ];
+    const monMap = new Map();
+    const chunkSize = 400;
+    for (let i = 0; i < audIds.length; i += chunkSize) {
+      const part = audIds.slice(i, i + chunkSize);
+      const ph = part.map(() => '?').join(',');
+      const ms = await dbAll(
+        `SELECT am.auditoria_id AS aid, m.patrimonio, m.modelo
+         FROM auditoria_monitores am
+         JOIN monitores m ON m.id = am.monitor_id
+         WHERE am.auditoria_id IN (${ph}) AND am.confirmado = 1
+         ORDER BY am.auditoria_id, m.patrimonio`,
+        part
+      );
+      for (const m of ms) {
+        const line = `${m.patrimonio}${m.modelo ? ` (${m.modelo})` : ''}`;
+        const arr = monMap.get(m.aid) || [];
+        arr.push(line);
+        monMap.set(m.aid, arr);
+      }
+    }
+
+    const out = rows.map((r) => ({
+      computador: r.nome_maquina || '',
+      patrimonio_pc: r.pc_patrimonio || '',
+      localizacao: r.localizacao || '',
+      secretaria: r.secretaria,
+      status: r.status,
+      observacao: r.observacao || '',
+      data_auditoria: r.data_auditoria || '',
+      monitores_confirmados: (monMap.get(r.auditoria_id) || []).join('; '),
+    }));
 
     const ws = XLSX.utils.json_to_sheet(out);
     const wb = XLSX.utils.book_new();
@@ -1068,11 +1165,30 @@ function runImportSubprocess() {
   return r.status === 0;
 }
 
-async function maybeAutoImportFromExcel() {
-  const off = String(process.env.AUTO_IMPORT_ON_START || '')
+function autoImportOnStartExplicitlyEnabled() {
+  const v = String(process.env.AUTO_IMPORT_ON_START || '')
+    .trim()
     .toLowerCase();
-  if (off === '0' || off === 'false' || off === 'no') {
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function autoImportOnStartExplicitlyDisabled() {
+  const v = String(process.env.AUTO_IMPORT_ON_START || '')
+    .trim()
+    .toLowerCase();
+  return v === '0' || v === 'false' || v === 'no';
+}
+
+async function maybeAutoImportFromExcel() {
+  if (autoImportOnStartExplicitlyDisabled()) {
     console.log('[import] AUTO_IMPORT_ON_START desligado — não importa ao subir.');
+    return;
+  }
+  if (!autoImportOnStartExplicitlyEnabled() && isRailwayLike()) {
+    console.log(
+      '[import] Railway: import automático ao subir está desligado por padrão. ' +
+        'Com banco vazio, rode o import manual (CLI ou «Reimportar planilhas» no admin) ou defina AUTO_IMPORT_ON_START=true uma vez.'
+    );
     return;
   }
 
@@ -1131,6 +1247,7 @@ function startServer() {
 
       app.listen(PORT, () => {
         console.log(`Servidor ouvindo na porta ${PORT}`);
+        console.log('[app] Health check: GET /api/health');
         setImmediate(() => {
           maybeAutoImportFromExcel().catch((e) =>
             console.error('[import] Erro no import automático:', e)
