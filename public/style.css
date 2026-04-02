@@ -628,58 +628,6 @@ select.field-sm {
   line-height: 1.35;
 }
 
-.inv-dash-idade {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.inv-idade-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(50px, 88px);
-  gap: 0.35rem 0.6rem;
-  align-items: center;
-  font-size: 0.86rem;
-}
-
-.inv-idade-row .inv-idade-lbl {
-  grid-column: 1 / -1;
-  color: var(--muted);
-}
-
-@media (min-width: 420px) {
-  .inv-idade-row {
-    grid-template-columns: 7.5rem 1fr 2.25rem;
-  }
-  .inv-idade-row .inv-idade-lbl {
-    grid-column: auto;
-  }
-}
-
-.inv-idade-bar-wrap {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  min-width: 0;
-}
-
-.inv-idade-bar {
-  height: 100%;
-  border-radius: 999px;
-  background: rgba(61, 156, 245, 0.55);
-  min-width: 2px;
-  transition: width 0.3s ease;
-}
-
-.inv-idade-n {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: var(--text);
-}
-
 .inv-dash-mon {
   margin: 0;
   font-size: 0.92rem;
@@ -693,4 +641,33 @@ select.field-sm {
 
 .inv-filtros-card .inv-filtro-busca-lbl {
   margin-top: 0.15rem;
+}
+
+.inv-mon-painel-hint {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.inv-mon-resumo {
+  margin-bottom: 0.85rem;
+}
+
+.inv-mon-resumo-inner {
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.inv-mon-resumo-inner strong {
+  color: var(--text);
+}
+
+.inv-mon-resumo-inner .warn-num {
+  color: var(--warn);
+}
+
+.inv-mon-card .inv-mon-explica {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
 }

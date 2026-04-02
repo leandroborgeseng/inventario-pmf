@@ -123,6 +123,150 @@
     return j;
   }
 
+  async function apiMonitoresPainel() {
+    const { token, senha } = getAuth();
+    const loc = valorFiltroLocal();
+    const q = loc ? '?local=' + encodeURIComponent(loc) : '';
+    const r = await fetch(
+      '/api/monitores-painel/' + encodeURIComponent(token) + q,
+      { headers: { 'X-Senha': senha } }
+    );
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erro ao carregar monitores');
+    return j;
+  }
+
+  function badgeMonVistoria(vistoriaPc) {
+    if (vistoriaPc === 'confirmado')
+      return '<span class="badge ok">Computador vistoriado (confirmado)</span>';
+    if (vistoriaPc === 'outro_local')
+      return '<span class="badge move">PC · outro local</span>';
+    if (vistoriaPc === 'nao_encontrado')
+      return '<span class="badge no">PC · não encontrado</span>';
+    return (
+      '<span class="badge pending">' +
+      escapeHtml(vistoriaPc || '—') +
+      '</span>'
+    );
+  }
+
+  function renderMonitoresPainel(data) {
+    const sub = $('mon-painel-sub');
+    const hint = $('mon-painel-hint');
+    const resumo = $('mon-painel-resumo');
+    const lista = $('mon-painel-lista');
+    const locSel = valorFiltroLocal();
+    const locLabel = (() => {
+      const sel = $('inv-filtro-local');
+      if (!sel || !locSel) return '';
+      const opt = sel.options[sel.selectedIndex];
+      return opt ? opt.textContent.trim() : '';
+    })();
+
+    if (sub) {
+      sub.textContent =
+        (secretariaNome || 'Secretaria') +
+        ' · ' +
+        (data.monitores && data.monitores.length
+          ? data.monitores.length + ' monitor(es) nesta lista'
+          : 'Nenhum monitor nesta lista');
+    }
+    if (hint) {
+      if (!locSel) {
+        hint.textContent =
+          '«Não ligado»: ainda não foi escolhido na vistoria de nenhum computador. «Ligado»: associado ao gravar monitores após confirmar um PC.';
+      } else {
+        hint.textContent =
+          'Filtro de local «' +
+          locLabel +
+          '»: só entram monitores já ligados a um computador com esse local. Monitores sem vínculo não aparecem neste filtro.';
+      }
+    }
+
+    const items = data.monitores || [];
+    let nSem = 0;
+    let nLigConfirm = 0;
+    let nLigOutro = 0;
+    let nLigNao = 0;
+    for (const it of items) {
+      if (!it.vinculo) nSem++;
+      else if (it.vinculo.vistoria_pc === 'confirmado') nLigConfirm++;
+      else if (it.vinculo.vistoria_pc === 'outro_local') nLigOutro++;
+      else if (it.vinculo.vistoria_pc === 'nao_encontrado') nLigNao++;
+    }
+    if (resumo) {
+      resumo.innerHTML =
+        '<div class="inv-mon-resumo-inner">' +
+        '<span><strong>' +
+        nSem +
+        '</strong> sem vínculo</span> · <span><strong>' +
+        nLigConfirm +
+        '</strong> ligados · vistoria OK</span> · <span class="warn-num"><strong>' +
+        (nLigOutro + nLigNao) +
+        '</strong> ligados · PC outro local / não encontrado</span></div>';
+    }
+
+    if (lista) {
+      lista.innerHTML = '';
+      if (!items.length) {
+        lista.innerHTML =
+          '<p class="muted">Nenhum monitor para mostrar. Ajuste o filtro de local ou confira o cadastro.</p>';
+        return;
+      }
+      for (const it of items) {
+        const div = document.createElement('div');
+        div.className = 'card inv-mon-card';
+        const pat = escapeHtml(it.patrimonio || '—');
+        const mod = it.modelo ? escapeHtml(it.modelo) : '';
+        const v = it.vinculo;
+        let corpo = '';
+        if (!v) {
+          corpo =
+            '<p class="meta">Ligação à vistoria</p>' +
+            '<span class="badge pending">Não ligado a computador</span>' +
+            '<p class="muted inv-mon-explica">Este monitor ainda não foi associado ao confirmar um PC (etapa dos monitores).</p>';
+        } else {
+          const locPc = escapeHtml(String(v.localizacao || '—'));
+          const nm = escapeHtml(String(v.nome_maquina || '(sem nome)'));
+          const pp = escapeHtml(String(v.pc_patrimonio || '—'));
+          corpo =
+            '<p class="meta">Ligado ao computador</p>' +
+            '<p class="card-title" style="font-size:0.98rem">' +
+            nm +
+            '</p>' +
+            '<p class="meta">Patrim. PC: ' +
+            pp +
+            ' · Local: ' +
+            locPc +
+            '</p>' +
+            '<p class="meta">Estado da vistoria do PC</p>' +
+            badgeMonVistoria(v.vistoria_pc);
+        }
+        div.innerHTML =
+          '<p class="card-title">' +
+          pat +
+          (mod ? ' · ' + mod : '') +
+          '</p>' +
+          corpo;
+        lista.appendChild(div);
+      }
+    }
+  }
+
+  async function openMonitoresPainel() {
+    showErr('mon-painel-err', '');
+    const lista = $('mon-painel-lista');
+    if (lista) lista.innerHTML = '<p class="muted">A carregar…</p>';
+    showScreen('screen-monitores-painel');
+    try {
+      const data = await apiMonitoresPainel();
+      renderMonitoresPainel(data);
+    } catch (e) {
+      showErr('mon-painel-err', e.message);
+      if (lista) lista.innerHTML = '';
+    }
+  }
+
   function badgeHtml(audit) {
     if (!audit) return '<span class="badge pending">Pendente</span>';
     if (audit.confirmado === 'confirmado')
@@ -151,25 +295,6 @@
       .replace(/\p{M}/gu, '')
       .replace(/[^A-Za-z0-9]/g, '')
       .toUpperCase();
-  }
-
-  function formatarDataBR(iso) {
-    if (!iso || typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(iso))
-      return '';
-    const [y, m, d] = iso.slice(0, 10).split('-');
-    return d + '/' + m + '/' + y;
-  }
-
-  function metaIdadeHtml(c) {
-    if (!c.data_aquisicao && !c.idade_aquisicao) return '';
-    const br = c.data_aquisicao ? formatarDataBR(c.data_aquisicao) : '';
-    let t = '<p class="meta">';
-    if (br) t += 'Data aquisição: <strong>' + escapeHtml(br) + '</strong>';
-    if (c.idade_aquisicao) {
-      if (br) t += ' · ';
-      t += 'Idade: <strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
-    }
-    return t + '</p>';
   }
 
   let detailNomePrimeiroFoco = false;
@@ -282,7 +407,6 @@
     const cap = $('inv-dash-caption');
     const stats = $('inv-dash-stats');
     const monEl = $('inv-dash-mon');
-    const idadeRoot = $('inv-dash-idade');
 
     if (bar) bar.style.width = pct + '%';
     if (barTrack) {
@@ -335,53 +459,13 @@
       }
     }
 
-    if (idadeRoot) {
-      idadeRoot.innerHTML = '';
-      if (total === 0) {
-        /* nada */
-      } else {
-        const id = r.idade || {};
-        const faixas = Array.isArray(id.faixas) ? id.faixas : [];
-        const rows = [];
-        if (id.sem_data > 0) {
-          rows.push({ label: 'Sem data de aquisição', count: id.sem_data });
-        }
-        faixas.forEach((f) => {
-          rows.push({ label: f.label, count: f.count || 0 });
-        });
-        const maxN = Math.max.apply(
-          null,
-          rows.map((x) => x.count).concat([1])
-        );
-        rows.forEach((row) => {
-          const pctBar =
-            maxN > 0 ? Math.round((row.count / maxN) * 1000) / 10 : 0;
-          const d = document.createElement('div');
-          d.className = 'inv-idade-row';
-          d.innerHTML =
-            '<span class="inv-idade-lbl">' +
-            escapeHtml(row.label) +
-            '</span><div class="inv-idade-bar-wrap"><div class="inv-idade-bar" style="width:' +
-            pctBar +
-            '%"></div></div><span class="inv-idade-n">' +
-            escapeHtml(String(row.count)) +
-            '</span>';
-          idadeRoot.appendChild(d);
-        });
-        if (!rows.length) {
-          idadeRoot.innerHTML =
-            '<p class="muted" style="margin:0">Sem dados de idade.</p>';
-        }
-      }
-    }
-
     if (monEl) {
       const m = r.monitores_total != null ? Number(r.monitores_total) : 0;
       monEl.textContent =
         m === 0
           ? 'Nenhum monitor associado a esta secretaria no cadastro.'
           : String(m) +
-            ' monitor(es) no cadastro (ligação à vistoria ao confirmar cada computador).';
+            ' monitor(es) no cadastro. Use «Ver monitores» para vínculos com a vistoria.';
     }
   }
 
@@ -460,7 +544,6 @@
         escapeHtml(c.localizacao || '—') +
         '</p>' +
         (c.status_ad ? '<p class="meta">AD: ' + escapeHtml(c.status_ad) + '</p>' : '') +
-        metaIdadeHtml(c) +
         badgeHtml(audit) +
         (quick
           ? '<div class="pc-actions-mini">' +
@@ -517,23 +600,11 @@
     showErr('detail-err', '');
     const pat = c.patrimonio || '—';
     const loc = c.localizacao || '—';
-    let resumo =
+    const resumo =
       'Patrimônio <strong>' +
       escapeHtml(pat) +
       '</strong> · Local: ' +
       escapeHtml(loc);
-    if (c.data_aquisicao || c.idade_aquisicao) {
-      resumo += '<br><span class="meta">';
-      if (c.data_aquisicao) {
-        const br = formatarDataBR(c.data_aquisicao);
-        if (br) resumo += 'Data aquisição: <strong>' + escapeHtml(br) + '</strong>';
-      }
-      if (c.idade_aquisicao) {
-        if (c.data_aquisicao && formatarDataBR(c.data_aquisicao)) resumo += ' · ';
-        resumo += 'Idade: <strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
-      }
-      resumo += '</span>';
-    }
     $('detail-resumo').innerHTML = resumo;
 
     $('detail-nome').value = c.nome_maquina || '';
@@ -662,23 +733,11 @@
     ajusteNomePc = c;
     showErr('nome-ajuste-err', '');
     const pat = c.patrimonio || '—';
-    let sub =
+    const sub =
       'Patrimônio <strong>' +
       escapeHtml(pat) +
       '</strong> · Local: ' +
       escapeHtml(c.localizacao || '—');
-    if (c.data_aquisicao || c.idade_aquisicao) {
-      sub += '<br><span class="muted">';
-      if (c.data_aquisicao) {
-        const br = formatarDataBR(c.data_aquisicao);
-        if (br) sub += 'Data aquisição: <strong>' + escapeHtml(br) + '</strong>';
-      }
-      if (c.idade_aquisicao) {
-        if (c.data_aquisicao && formatarDataBR(c.data_aquisicao)) sub += ' · ';
-        sub += 'Idade: <strong>' + escapeHtml(c.idade_aquisicao) + '</strong>';
-      }
-      sub += '</span>';
-    }
     $('nome-ajuste-sub').innerHTML = sub;
     $('nome-ajuste-input').value = c.nome_maquina || '';
     ajusteNomePrimeiroFoco = true;
@@ -967,6 +1026,13 @@
       showErr('login-err', e.message);
     }
   };
+
+  const btnMonPainel = $('btn-monitores-painel');
+  if (btnMonPainel) btnMonPainel.onclick = () => openMonitoresPainel();
+
+  const btnVoltarMonPainel = $('btn-voltar-mon-painel');
+  if (btnVoltarMonPainel)
+    btnVoltarMonPainel.onclick = () => showScreen('screen-list');
 
   $('btn-sair').onclick = () => {
     clearAuth();

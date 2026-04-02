@@ -38,6 +38,9 @@
           >
         </div>
         <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-monitores-painel">
+            Ver monitores
+          </button>
           <button type="button" class="btn btn-ghost" id="btn-sair">Sair</button>
         </div>
         <h1 id="titulo-secretaria">Vistoria</h1>
@@ -54,9 +57,6 @@
           <div class="inv-dash-stats" id="inv-dash-stats"></div>
           <h3 class="inv-dash-subh">Monitores (cadastro)</h3>
           <p class="inv-dash-mon muted" id="inv-dash-mon"></p>
-          <h3 class="inv-dash-subh">Idade dos equipamentos</h3>
-          <p class="muted inv-dash-hint">Distribuição pela data de aquisição informada na planilha. Itens sem data aparecem em «Sem data».</p>
-          <div class="inv-dash-idade" id="inv-dash-idade"></div>
         </section>
 
         <div class="inv-tabs" id="inv-tabs">
@@ -197,6 +197,20 @@
           </button>
           <div class="err" id="nome-ajuste-err"></div>
         </div>
+      </div>
+
+      <div id="screen-monitores-painel" class="screen">
+        <div class="topbar">
+          <button type="button" class="btn btn-ghost" id="btn-voltar-mon-painel">
+            Voltar à lista
+          </button>
+        </div>
+        <h1>Monitores</h1>
+        <p class="sub" id="mon-painel-sub"></p>
+        <p class="muted inv-mon-painel-hint" id="mon-painel-hint"></p>
+        <div class="err" id="mon-painel-err"></div>
+        <div id="mon-painel-resumo" class="inv-mon-resumo"></div>
+        <div id="mon-painel-lista"></div>
       </div>
 
       <div id="screen-monitors" class="screen">

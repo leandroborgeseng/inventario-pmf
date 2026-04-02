@@ -17,7 +17,7 @@ const {
   isRailwayLike,
 } = require('./db-config');
 const { createFailLimiter } = require('./fail-limiter');
-const { idadeAquisicaoDeISO, anosCompletosDeISO } = require('./idade-aquisicao');
+const { idadeAquisicaoDeISO } = require('./idade-aquisicao');
 const DB_PATH = resolveDbPath();
 process.env.DB_PATH = DB_PATH;
 logDbPersistenceAndMaybeExit(DB_PATH);
@@ -127,23 +127,10 @@ async function validateSecretariaAccess(rawToken, rawSenha) {
 
 /** Resumo agregado para dashboard da secretaria (a partir das linhas cruas do JOIN). */
 function buildSecretariaResumo(rows, monitoresTotal) {
-  const faixaDefs = [
-    { key: 'menos_1', label: 'Menos de 1 ano' },
-    { key: '1_a_2', label: '1 a 2 anos' },
-    { key: '3_a_5', label: '3 a 5 anos' },
-    { key: '6_mais', label: '6 anos ou mais' },
-  ];
-  const faixaCounts = {
-    menos_1: 0,
-    '1_a_2': 0,
-    '3_a_5': 0,
-    '6_mais': 0,
-  };
   let pendentes = 0;
   let confirmados = 0;
   let nao_encontrado = 0;
   let outro_local = 0;
-  let sem_data = 0;
   const total = rows.length;
 
   for (const r of rows) {
@@ -151,21 +138,6 @@ function buildSecretariaResumo(rows, monitoresTotal) {
     else if (r.audit_confirmado === 'confirmado') confirmados++;
     else if (r.audit_confirmado === 'nao_encontrado') nao_encontrado++;
     else if (r.audit_confirmado === 'outro_local') outro_local++;
-
-    const iso = r.data_aquisicao;
-    if (!iso || !String(iso).trim()) {
-      sem_data++;
-      continue;
-    }
-    const anos = anosCompletosDeISO(iso);
-    if (anos == null) {
-      sem_data++;
-      continue;
-    }
-    if (anos <= 0) faixaCounts.menos_1++;
-    else if (anos <= 2) faixaCounts['1_a_2']++;
-    else if (anos <= 5) faixaCounts['3_a_5']++;
-    else faixaCounts['6_mais']++;
   }
 
   const registados = confirmados + nao_encontrado + outro_local;
@@ -180,15 +152,6 @@ function buildSecretariaResumo(rows, monitoresTotal) {
     outro_local,
     percent_vistoria_feita,
     monitores_total: monitoresTotal,
-    idade: {
-      sem_data,
-      com_data_valida: total - sem_data,
-      faixas: faixaDefs.map((f) => ({
-        key: f.key,
-        label: f.label,
-        count: faixaCounts[f.key],
-      })),
-    },
   };
 }
 
@@ -383,7 +346,6 @@ app.get('/api/computadores/:token', async (req, res) => {
 
     const rows = await dbAll(
       `SELECT c.id, c.nome_maquina, c.patrimonio, c.localizacao, c.status_ad,
-              c.data_aquisicao,
               a.id AS auditoria_id, a.confirmado AS audit_confirmado,
               a.observacao AS audit_observacao, a.data AS audit_data
        FROM computadores c
@@ -399,10 +361,6 @@ app.get('/api/computadores/:token', async (req, res) => {
       patrimonio: r.patrimonio,
       localizacao: r.localizacao,
       status_ad: r.status_ad,
-      data_aquisicao: r.data_aquisicao || null,
-      idade_aquisicao: r.data_aquisicao
-        ? idadeAquisicaoDeISO(r.data_aquisicao) || null
-        : null,
       auditoria: r.auditoria_id
         ? {
             id: r.auditoria_id,
@@ -496,6 +454,89 @@ app.get('/api/monitores/:token', async (req, res) => {
     res.json({
       ok: true,
       auditoria_id: aud ? aud.id : null,
+      monitores: list,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/monitores-painel/:token — X-Senha.
+ * Monitores com vínculo à vistoria (ligados a um PC na fase de monitores).
+ * ?local= — opcional: só monitores ligados a PC com esse local (valor do filtro da lista).
+ */
+app.get('/api/monitores-painel/:token', async (req, res) => {
+  try {
+    const senha = req.headers['x-senha'] || req.query.senha;
+    const s = await validateSecretariaAccess(req.params.token, senha);
+    if (!s) return res.status(401).json({ error: 'Não autorizado' });
+
+    const localRaw = req.query.local;
+    const hasLocal =
+      localRaw != null &&
+      String(localRaw).trim() !== '' &&
+      String(localRaw).trim() !== 'undefined';
+    const localFilter = hasLocal ? String(localRaw) : '';
+
+    const monitores = await dbAll(
+      `SELECT m.id, m.patrimonio, m.modelo
+       FROM monitores m
+       WHERE m.secretaria_id = ?
+       ORDER BY m.patrimonio COLLATE NOCASE, m.id`,
+      [s.id]
+    );
+
+    const links = await dbAll(
+      `SELECT am.monitor_id AS monitor_id,
+              a.computador_id AS computador_id,
+              a.confirmado AS vistoria_pc,
+              c.nome_maquina AS nome_maquina,
+              c.patrimonio AS pc_patrimonio,
+              c.localizacao AS localizacao,
+              a.data AS audit_data
+       FROM auditoria_monitores am
+       JOIN auditoria a ON a.id = am.auditoria_id
+       JOIN computadores c ON c.id = a.computador_id
+       WHERE c.secretaria_id = ? AND am.confirmado = 1
+       ORDER BY a.data DESC`,
+      [s.id]
+    );
+
+    const byMon = new Map();
+    for (const row of links) {
+      if (!byMon.has(row.monitor_id)) {
+        byMon.set(row.monitor_id, {
+          computador_id: row.computador_id,
+          nome_maquina: row.nome_maquina,
+          pc_patrimonio: row.pc_patrimonio,
+          localizacao: row.localizacao,
+          vistoria_pc: row.vistoria_pc,
+        });
+      }
+    }
+
+    let list = monitores.map((m) => ({
+      id: m.id,
+      patrimonio: m.patrimonio,
+      modelo: m.modelo,
+      vinculo: byMon.get(m.id) || null,
+    }));
+
+    if (localFilter) {
+      const semLocalToken = '__sem_local__';
+      list = list.filter((item) => {
+        const v = item.vinculo;
+        if (!v) return false;
+        const loc = String(v.localizacao || '').trim();
+        if (localFilter === semLocalToken) return !loc;
+        return loc === localFilter;
+      });
+    }
+
+    res.json({
+      ok: true,
+      filtro_local: localFilter || null,
       monitores: list,
     });
   } catch (e) {
